@@ -66,23 +66,8 @@ func (ecp TimeComponentPosition) String() string {
 	}
 }
 
-func ValidateTimeComponent(quantity uint16, position TimeComponentPosition) bool {
-	var min uint16
-	var max uint16
-	switch position {
-	case TimeComponentPositionYear:
-		min = 2015
-		max = 2050
-	case TimeComponentPositionDay:
-		min = 1
-		max = 31
-	case TimeComponentPositionMonth:
-		min = 1
-		max = 12
-	case TimeComponentPositionHour:
-		min = 0
-		max = 23
-	}
+func ValidateTimeComponent(prefix ID, quantity uint16, position TimeComponentPosition) bool {
+	min, max := TimeComponentBounds(prefix, position)
 	return min <= quantity && quantity <= max
 }
 
@@ -91,13 +76,14 @@ func ParseTimeFromPath(timePath []uint16) ([]IDComponent, error) {
 		return nil, errors.New("Expiry path too long")
 	}
 
-	components := make([]IDComponent, len(timePath), len(timePath))
+	components := make([]IDComponent, 0, len(timePath))
 	for i, quantity := range timePath {
 		pos := TimeComponentPosition(i)
-		if !ValidateTimeComponent(quantity, pos) {
+		if !ValidateTimeComponent(components, quantity, pos) {
 			return nil, fmt.Errorf("'%d' is not a valid %s", quantity, pos.String())
 		}
-		components[i] = NewTimeComponent(quantity, pos)
+		component := NewTimeComponent(quantity, pos)
+		components = append(components, component)
 	}
 	return components, nil
 }
