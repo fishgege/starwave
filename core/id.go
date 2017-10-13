@@ -195,3 +195,33 @@ func (id ID) String() string {
 	}
 	return strings.Join(components, "/")
 }
+
+/* Some useful functions. */
+
+// SeparateID splits an ID into two separate IDs, one containing URI components
+// the other containing time components.
+func SeparateID(id ID) (ID, ID) {
+	uriComponents := make(ID, 0, len(id))
+	timeComponents := make(ID, 0, len(id))
+	for _, component := range id {
+		switch component.Type() {
+		case URIComponentType:
+			uriComponents = append(uriComponents, component)
+		case TimeComponentType:
+			timeComponents = append(timeComponents, component)
+		default:
+			panic("Unknown ID component type")
+		}
+	}
+	return uriComponents, timeComponents
+}
+
+// JoinIDs joins two IDs by concatenation. For example, given a slice of URI
+// components and a slice of Time components, one can combine them using this
+// function. It does not change the position value inside each component.
+func JoinIDs(first ID, second ID) ID {
+	combined := make(ID, 0, len(first)+len(second))
+	combined = append(combined, first...)
+	combined = append(combined, second...)
+	return combined
+}

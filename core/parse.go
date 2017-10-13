@@ -48,7 +48,14 @@ func ParseURIFromPath(uriPath []string) ([]IDComponent, error) {
 }
 
 func ParseURI(uri string) ([]IDComponent, error) {
-	return ParseURIFromPath(strings.Split(uri, "/"))
+	rawComponents := strings.Split(uri, "/")
+	filteredComponents := make([]string, 0, len(rawComponents))
+	for _, rawComponent := range rawComponents {
+		if rawComponent != "" {
+			filteredComponents = append(filteredComponents, rawComponent)
+		}
+	}
+	return ParseURIFromPath(filteredComponents)
 }
 
 func (ecp TimeComponentPosition) String() string {
