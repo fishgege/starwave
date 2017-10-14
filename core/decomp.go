@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"math/big"
 
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 	"golang.org/x/crypto/sha3"
 	"vuvuzela.io/crypto/bn256"
@@ -27,7 +28,7 @@ func GenerateKey() ([32]byte, *bn256.GT) {
 	if err != nil {
 		panic(err)
 	}
-	var randomGT = hibe.HashToGT(randomness)
+	var randomGT = cryptutils.HashToGT(randomness)
 	sk := GTToSecretKey(randomGT)
 
 	return sk, randomGT

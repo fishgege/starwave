@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 )
 
@@ -25,7 +26,7 @@ func assertKeyIsForID(t *testing.T, params *hibe.Params, key *hibe.PrivateKey, i
 		panic(err)
 	}
 
-	gt := hibe.HashToGT(buffer)
+	gt := cryptutils.HashToGT(buffer)
 
 	ciphertext, err := hibe.Encrypt(rand.Reader, params, id.HashToZp(), gt)
 	if err != nil {

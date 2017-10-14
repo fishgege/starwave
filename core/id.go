@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 )
 
 /* ID Component Interface */
@@ -183,7 +183,7 @@ type ID []IDComponent
 func (id ID) HashToZp() []*big.Int {
 	hashed := make([]*big.Int, len(id), len(id))
 	for i := 0; i != len(id); i++ {
-		hashed[i] = hibe.HashToZp(id[i].Representation())
+		hashed[i] = cryptutils.HashToZp(id[i].Representation())
 	}
 	return hashed
 }

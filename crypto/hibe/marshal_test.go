@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"vuvuzela.io/crypto/bn256"
 )
 
@@ -15,7 +16,7 @@ var Message = bn256.Pair(new(bn256.G1).ScalarBaseMult(big.NewInt(3)), new(bn256.
 func IDToInts(id []string) []*big.Int {
 	ints := make([]*big.Int, len(id))
 	for i, component := range id {
-		ints[i] = HashToZp([]byte(component))
+		ints[i] = cryptutils.HashToZp([]byte(component))
 	}
 	return ints
 }
