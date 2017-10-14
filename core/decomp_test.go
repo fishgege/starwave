@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samkumar/hibe"
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 )
 
 func TestCiphertextDecomposition(t *testing.T) {

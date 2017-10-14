@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/samkumar/hibe"
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 	"golang.org/x/crypto/sha3"
 	"vuvuzela.io/crypto/bn256"
 )

@@ -6,7 +6,7 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/samkumar/hibe"
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 	"golang.org/x/crypto/sha3"
 )
 

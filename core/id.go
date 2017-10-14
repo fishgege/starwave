@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samkumar/hibe"
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 )
 
 /* ID Component Interface */
