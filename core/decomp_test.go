@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
 )
 
@@ -34,7 +35,7 @@ func TestCiphertextDecomposition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pt, gt := GenerateKey()
+	pt, gt := cryptutils.GenerateKey(make([]byte, 16))
 
 	ciphertext := EncryptDecomposed(gt, params, uriPath, timePath)
 
@@ -48,9 +49,9 @@ func TestCiphertextDecomposition(t *testing.T) {
 	}
 
 	gt1 := DecryptDecomposed(ciphertext, id1, sk1)
-	pt1 := GTToSecretKey(gt1)
+	pt1 := cryptutils.GTToSecretKey(gt1, make([]byte, 16))
 
-	if !bytes.Equal(pt[:], pt1[:]) {
+	if !bytes.Equal(pt, pt1) {
 		t.Fatalf("Original and decrypted plaintexts differ")
 	}
 }

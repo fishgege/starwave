@@ -1,9 +1,11 @@
 package cryptutils
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"math/big"
 
+	"golang.org/x/crypto/sha3"
 	"vuvuzela.io/crypto/bn256"
 )
 
@@ -26,4 +28,31 @@ func HashToGT(bytestring []byte) *bn256.GT {
 			new(bn256.G2).ScalarBaseMult(big.NewInt(1)))
 	}
 	return new(bn256.GT).ScalarMult(gtBase, HashToZp(bytestring))
+}
+
+// GTToSecretKey hashes an element in group GT to get a secret key. The secret
+// key is written into the provided slice (which can be of any length, but
+// remember that there are only 32 bytes of entropy in the element of GT).
+// Returns the provided slice
+func GTToSecretKey(gt *bn256.GT, sk []byte) []byte {
+	shake := sha3.NewShake256()
+	shake.Write(gt.Marshal())
+	shake.Read(sk)
+	return sk
+}
+
+// GenerateKey generates a random key, and an element in GT that hashes to that
+// key. The key is written to the provided slice, and that same slice is
+// returned. Note that, while the slice can be of any length, there are only
+// 32 bytes of entropy in an element in GT.
+func GenerateKey(sk []byte) ([]byte, *bn256.GT) {
+	var randomness [32]byte
+	_, err := rand.Read(randomness[:])
+	if err != nil {
+		panic(err)
+	}
+	var randomGT = HashToGT(randomness[:])
+	GTToSecretKey(randomGT, sk)
+
+	return sk, randomGT
 }

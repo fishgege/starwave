@@ -4,35 +4,9 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
-	"golang.org/x/crypto/sha3"
 	"vuvuzela.io/crypto/bn256"
 )
-
-// GTToSecretKey hashes an element in group GT to get a 32-byte secret key for
-// for use with a secretbox.
-func GTToSecretKey(gt *bn256.GT) [32]byte {
-	shake := sha3.NewShake256()
-	shake.Write(gt.Marshal())
-	var sk [32]byte
-	shake.Read(sk[:])
-	return sk
-}
-
-// GenerateKey generates a 32-byte key (for use with secretbox, for example),
-// and returns it. It also returns an element in GT that hashes to that key.
-func GenerateKey() ([32]byte, *bn256.GT) {
-	var randomness = make([]byte, 32)
-	_, err := rand.Read(randomness)
-	if err != nil {
-		panic(err)
-	}
-	var randomGT = cryptutils.HashToGT(randomness)
-	sk := GTToSecretKey(randomGT)
-
-	return sk, randomGT
-}
 
 /* Table management */
 
