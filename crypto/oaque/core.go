@@ -121,13 +121,13 @@ func RandomInZp(random io.Reader) (*big.Int, error) {
 	return rand.Int(random, bn256.Order)
 }
 
-// KeyGenFromMaster generates a key for an attribute list using the master key.
+// KeyGen generates a key for an attribute list using the master key.
 // The attrs argument is a mapping from attribute to its value; attributes
 // not in the map are not set. The parameter "r" is an element of Zp. It should
 // be chosen uniformly at random, and represents the randomness to use to
 // generate the key. If left as nil, it will be generated using a cryptographic
 // random number generator.
-func KeyGenFromMaster(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (*PrivateKey, error) {
+func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (*PrivateKey, error) {
 	key := &PrivateKey{}
 	k := len(attrs)
 	l := len(params.H)

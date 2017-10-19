@@ -23,7 +23,7 @@ func encryptHelper(t *testing.T, params *Params, attrs AttributeList, message *b
 
 func genFromMasterHelper(t *testing.T, params *Params, masterkey MasterKey, attrs AttributeList) *PrivateKey {
 	// Generate key for the single attributes
-	key, err := KeyGenFromMaster(nil, params, masterkey, attrs)
+	key, err := KeyGen(nil, params, masterkey, attrs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestAdditiveRandomness(t *testing.T) {
 	ciphertext := encryptHelper(t, params, attrs3, message)
 
 	// Generate key in two steps, in two different ways
-	key1a, err := KeyGenFromMaster(r, params, masterkey, attrs1)
+	key1a, err := KeyGen(r, params, masterkey, attrs1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestAdditiveRandomness(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key2a, err := KeyGenFromMaster(s, params, masterkey, attrs2)
+	key2a, err := KeyGen(s, params, masterkey, attrs2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestAdditiveRandomness(t *testing.T) {
 
 	// Both keys should be equal to a key generated with randomness r + s
 	rpluss := new(big.Int).Add(r, s)
-	key3, err := KeyGenFromMaster(rpluss, params, masterkey, attrs3)
+	key3, err := KeyGen(rpluss, params, masterkey, attrs3)
 	if err != nil {
 		t.Fatal(err)
 	}

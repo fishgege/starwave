@@ -39,7 +39,7 @@ func TestMarshalling(t *testing.T) {
 		t.Fatal("Could not unmarshal Ciphertext")
 	}
 
-	privkey, err := KeyGenFromMaster(nil, params, key, attrs1)
+	privkey, err := KeyGen(nil, params, key, attrs1)
 	if err != nil {
 		t.Fatal(err)
 	}
