@@ -2,13 +2,13 @@ package core
 
 import (
 	"encoding/binary"
-	"math"
 	"math/big"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
 )
 
 /* ID Component Interface */
@@ -35,7 +35,7 @@ type IDComponent interface {
 
 type URIComponentPosition uint8
 
-const MaxURIComponentPosition = math.MaxUint8
+const MaxURILength = 16
 
 type URIComponent []byte
 
@@ -71,11 +71,29 @@ func (uc URIComponent) Position() URIComponentPosition {
 	return URIComponentPosition(uc[0])
 }
 
+type URIPath []URIComponent
+
+func (up URIPath) String() string {
+	components := make([]string, len(up), len(up))
+	for i := 0; i != len(components); i++ {
+		components[i] = up[i].String()
+	}
+	return strings.Join(components, "/")
+}
+
+func (up URIPath) ID() ID {
+	id := make(ID, len(up), len(up))
+	for i := 0; i != len(id); i++ {
+		id[0] = up[0]
+	}
+	return id
+}
+
 /* Time Component */
 
 type TimeComponentPosition uint8
 
-const MaxTimeComponentPosition = 3
+const MaxTimeLength = 4
 
 const (
 	TimeComponentPositionYear TimeComponentPosition = iota
@@ -99,7 +117,7 @@ const MaxDayFebruaryLeapYear = 29
 const MinHour = 0
 const MaxHour = 23
 
-func TimeComponentBounds(prefix ID, position TimeComponentPosition) (uint16, uint16) {
+func TimeComponentBounds(prefix TimePath, position TimeComponentPosition) (uint16, uint16) {
 	switch position {
 	case TimeComponentPositionYear:
 		return MinYear, MaxYear
@@ -176,6 +194,24 @@ func (tc TimeComponent) Position() TimeComponentPosition {
 	return TimeComponentPosition(tc[0])
 }
 
+type TimePath []TimeComponent
+
+func (tp TimePath) String() string {
+	components := make([]string, len(tp), len(tp))
+	for i := 0; i != len(components); i++ {
+		components[i] = tp[i].String()
+	}
+	return strings.Join(components, "/")
+}
+
+func (tp TimePath) ID() ID {
+	id := make(ID, len(tp), len(tp))
+	for i := 0; i != len(id); i++ {
+		id[0] = tp[0]
+	}
+	return id
+}
+
 /* ID */
 
 type ID []IDComponent
@@ -186,6 +222,18 @@ func (id ID) HashToZp() []*big.Int {
 		hashed[i] = cryptutils.HashToZp(id[i].Representation())
 	}
 	return hashed
+}
+
+// AttributeSetFromIDs converts a URI and time to an OAQUE attribute set.
+func AttributeSetFromPaths(uriPath URIPath, timePath TimePath) map[oaque.AttributeIndex]*big.Int {
+	attrs := make(map[oaque.AttributeIndex]*big.Int)
+	for i, uriComponent := range uriPath {
+		attrs[oaque.AttributeIndex(i)] = cryptutils.HashToZp(uriComponent.Representation())
+	}
+	for j, timeComponent := range timePath {
+		attrs[oaque.AttributeIndex(j+MaxURILength)] = cryptutils.HashToZp(timeComponent.Representation())
+	}
+	return attrs
 }
 
 func (id ID) String() string {

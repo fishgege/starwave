@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func IDsToStrings(ids []ID) []string {
+func TimePathsToStrings(ids []TimePath) []string {
 	idStrings := make([]string, len(ids))
 	for i, id := range ids {
 		idStrings[i] = id.String()
@@ -25,7 +25,7 @@ func TestTimeRange(t *testing.T) {
 	}
 
 	times := TimeRange(start, end)
-	timeStrings := IDsToStrings(times)
+	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/12/28/21", "2017/12/28/22",
 		"2017/12/28/23", "2017/12/29", "2017/12/30", "2017/12/31", "2018",
 		"2019/1", "2019/2", "2019/3/1/0", "2019/3/1/1", "2019/3/1/2",
@@ -47,7 +47,7 @@ func TestTimeRangeOneDay(t *testing.T) {
 	}
 
 	times := TimeRange(start, end)
-	timeStrings := IDsToStrings(times)
+	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10"}
 
 	if !reflect.DeepEqual(timeStrings, expectedTimeStrings) {
@@ -66,7 +66,7 @@ func TestTimeRangeTwoDays(t *testing.T) {
 	}
 
 	times := TimeRange(start, end)
-	timeStrings := IDsToStrings(times)
+	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10", "2017/10/11"}
 
 	if !reflect.DeepEqual(timeStrings, expectedTimeStrings) {
@@ -85,7 +85,7 @@ func TestTimeRangeSingle(t *testing.T) {
 	}
 
 	times := TimeRange(start, end)
-	timeStrings := IDsToStrings(times)
+	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10/18"}
 
 	if !reflect.DeepEqual(timeStrings, expectedTimeStrings) {
@@ -104,7 +104,7 @@ func TestTimeRangeTwoHours(t *testing.T) {
 	}
 
 	times := TimeRange(start, end)
-	timeStrings := IDsToStrings(times)
+	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10/18", "2017/10/10/19"}
 
 	if !reflect.DeepEqual(timeStrings, expectedTimeStrings) {
@@ -123,7 +123,7 @@ func TestTimeRangeFebruary(t *testing.T) {
 	}
 
 	times := TimeRange(start, end)
-	timeStrings := IDsToStrings(times)
+	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2016/2/28/23", "2016/2/29", "2016/3/1", "2016/3/2/0"}
 
 	if !reflect.DeepEqual(timeStrings, expectedTimeStrings) {

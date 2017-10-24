@@ -17,7 +17,7 @@ func ValidateURIComponent(uri string) bool {
 }
 
 func ParseURIFromPath(uriPath []string) ([]IDComponent, error) {
-	if len(uriPath) > MaxURIComponentPosition+1 {
+	if len(uriPath) > MaxURILength {
 		return nil, errors.New("URI too long")
 	}
 
@@ -73,17 +73,17 @@ func (ecp TimeComponentPosition) String() string {
 	}
 }
 
-func ValidateTimeComponent(prefix ID, quantity uint16, position TimeComponentPosition) bool {
+func ValidateTimeComponent(prefix TimePath, quantity uint16, position TimeComponentPosition) bool {
 	min, max := TimeComponentBounds(prefix, position)
 	return min <= quantity && quantity <= max
 }
 
-func ParseTimeFromPath(timePath []uint16) ([]IDComponent, error) {
-	if len(timePath) > MaxTimeComponentPosition+1 {
+func ParseTimeFromPath(timePath []uint16) (TimePath, error) {
+	if len(timePath) > MaxTimeLength {
 		return nil, errors.New("Expiry path too long")
 	}
 
-	components := make([]IDComponent, 0, len(timePath))
+	components := make(TimePath, 0, len(timePath))
 	for i, quantity := range timePath {
 		pos := TimeComponentPosition(i)
 		if !ValidateTimeComponent(components, quantity, pos) {
@@ -95,7 +95,7 @@ func ParseTimeFromPath(timePath []uint16) ([]IDComponent, error) {
 	return components, nil
 }
 
-func ParseTime(time time.Time) ([]IDComponent, error) {
+func ParseTime(time time.Time) (TimePath, error) {
 	path := make([]uint16, 4, 4)
 	path[0] = uint16(time.Year())
 	path[1] = uint16(time.Month())

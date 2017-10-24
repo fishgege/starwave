@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-func TimeRangeFromPathsSingleLevel(prefix ID, startQuantity uint16, endQuantity uint16) []ID {
-	if len(prefix) > MaxTimeComponentPosition+1 {
+func TimeRangeFromPathsSingleLevel(prefix TimePath, startQuantity uint16, endQuantity uint16) []TimePath {
+	if len(prefix) > MaxTimeLength {
 		panic("prefix too long")
 	}
 
@@ -14,11 +14,11 @@ func TimeRangeFromPathsSingleLevel(prefix ID, startQuantity uint16, endQuantity 
 		panic("endQuantity is less than startQuantity")
 	}
 
-	ids := make([]ID, 0, endQuantity-startQuantity+1)
+	ids := make([]TimePath, 0, endQuantity-startQuantity+1)
 
 	newComponentIndex := TimeComponentPosition(len(prefix) + 1)
 	for q := startQuantity; q <= endQuantity; q++ {
-		id := make(ID, 0, len(prefix)+1)
+		id := make(TimePath, 0, len(prefix)+1)
 		id = append(id, prefix...)
 		id = append(id, NewTimeComponent(q, newComponentIndex))
 		ids = append(ids, id)
@@ -30,15 +30,15 @@ func TimeRangeFromPathsSingleLevel(prefix ID, startQuantity uint16, endQuantity 
 // TimeRangeFromPaths is a function that returns all time paths such that
 // STARTPATH <= path <= ENDPATH. Useful for computing which keys to grant
 // for expiry. STARTPATH and ENDPATH are fully-qualified paths.
-func TimeRangeFromPaths(startPath ID, endPath ID) []ID {
-	if len(startPath) != MaxTimeComponentPosition+1 || len(endPath) != MaxTimeComponentPosition+1 {
+func TimeRangeFromPaths(startPath TimePath, endPath TimePath) []TimePath {
+	if len(startPath) != MaxTimeLength || len(endPath) != MaxTimeLength {
 		panic("startPath and endPath must be fully qualified")
 	}
 
 	/* Copy startPath and endPath so we can mutate them. */
-	start := make(ID, 0, len(startPath))
+	start := make(TimePath, 0, len(startPath))
 	start = append(start, startPath...)
-	end := make(ID, 0, len(endPath))
+	end := make(TimePath, 0, len(endPath))
 	end = append(end, endPath...)
 
 	firstDifferingIndex := len(start)
@@ -52,15 +52,15 @@ func TimeRangeFromPaths(startPath ID, endPath ID) []ID {
 	}
 
 	if firstDifferingIndex == len(start) {
-		return []ID{start}
+		return []TimePath{start}
 	}
 
-	ids := make([]ID, 0, 8)
+	ids := make([]TimePath, 0, 8)
 
 	var i int
 
 	fullStart := true
-	i = MaxTimeComponentPosition
+	i = MaxTimeLength - 1
 	for i > firstDifferingIndex {
 		min, max := TimeComponentBounds(start[:i], TimeComponentPosition(i))
 		quantity := start[i].Quantity()
@@ -123,10 +123,10 @@ func TimeRangeFromPaths(startPath ID, endPath ID) []ID {
 	 * We still work from leaf up, so we need this buffer to reorder the
 	 * results to be in increasing order.
 	 */
-	endBuffer := make([][]ID, 0, MaxTimeComponentPosition+1)
+	endBuffer := make([][]TimePath, 0, MaxTimeLength)
 
 	fullEnd := true
-	i = MaxTimeComponentPosition
+	i = MaxTimeLength - 1
 	for i > firstDifferingIndex {
 		min, max := TimeComponentBounds(end[:i], TimeComponentPosition(i))
 		quantity := end[i].Quantity()
@@ -167,7 +167,7 @@ func TimeRangeFromPaths(startPath ID, endPath ID) []ID {
 	return ids
 }
 
-func TimeRange(start time.Time, end time.Time) []ID {
+func TimeRange(start time.Time, end time.Time) []TimePath {
 	startPath, err := ParseTime(start)
 	if err != nil {
 		panic(err)
