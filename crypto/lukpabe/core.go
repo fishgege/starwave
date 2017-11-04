@@ -88,7 +88,7 @@ func (ag *AccessGate) SetIndex(index int) {
 	panic("Not a leaf node")
 }
 
-func (ag *AccessGate) Clone() *AccessGate {
+func (ag *AccessGate) Clone() AccessNode {
 	clone := &AccessGate{
 		Thresh: ag.Thresh,
 		Inputs: make([]AccessNode, len(ag.Inputs)),
@@ -112,7 +112,7 @@ func (al *AccessLeaf) IsLeaf() bool {
 }
 
 func (al *AccessLeaf) Threshold() int {
-	return 1
+	panic("Not an internal node")
 }
 
 func (al *AccessLeaf) Children() []AccessNode {
@@ -135,7 +135,7 @@ func (al *AccessLeaf) SetIndex(index int) {
 	al.PrivateKeyIndex = index
 }
 
-func (al *AccessLeaf) Clone() *AccessLeaf {
+func (al *AccessLeaf) Clone() AccessNode {
 	return &AccessLeaf{
 		Attr:            new(big.Int).Set(al.Attr),
 		PrivateKeyIndex: al.PrivateKeyIndex,
@@ -331,7 +331,7 @@ func DecryptNode(key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn25
 			return nil
 		}
 
-		x := node.Index()
+		x := node.Index() - 1
 		power := bn256.Pair(key.D[x], ciphertext.E2)
 		denominator := bn256.Pair(ciphertext.Es[index], key.R[x])
 		power.Add(power, denominator.Neg(denominator))
@@ -367,7 +367,7 @@ func DecryptNode(key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn25
 		for m := 0; m != len(s); m++ {
 			j := s[m]
 			if j != i {
-				lagrange.Mul(lagrange, big.NewInt(int64(-i)))
+				lagrange.Mul(lagrange, big.NewInt(int64(-j)))
 				iMinusJ := big.NewInt(int64(i - j))
 				lagrange.Mul(lagrange, iMinusJ.ModInverse(iMinusJ, bn256.Order))
 				lagrange.Mod(lagrange, bn256.Order)
