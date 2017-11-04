@@ -22,6 +22,10 @@ type Params struct {
 	Pairing *bn256.GT
 }
 
+// MasterKey represents the key for a hierarchy that can create a key for any
+// element.
+type MasterKey *bn256.G1
+
 // AttributeIndex represents an attribute --- specifically, its index in the
 // array of attributes.
 type AttributeIndex uint8
@@ -29,10 +33,6 @@ type AttributeIndex uint8
 // AttributeList represents a list of attributes. It is map from each set
 // attribute (by its index) to the value of that attribute.
 type AttributeList map[AttributeIndex]*big.Int
-
-// MasterKey represents the key for a hierarchy that can create a key for any
-// element.
-type MasterKey *bn256.G1
 
 // MaximumDepth returns the number of attributes supported. This was specified
 // via the "l" argument when Setup was called.
@@ -247,9 +247,7 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT)
 		}
 	}
 
-	if params.Pairing == nil {
-		params.Pairing = bn256.Pair(params.G2, params.G1)
-	}
+	params.Precache()
 
 	ciphertext.A = new(bn256.GT)
 	ciphertext.A.ScalarMult(params.Pairing, s)
