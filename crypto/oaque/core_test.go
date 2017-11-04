@@ -3,6 +3,7 @@ package oaque
 import (
 	"bytes"
 	"crypto/rand"
+	"io"
 	"math/big"
 	"testing"
 
@@ -163,4 +164,133 @@ func TestAdditiveRandomness(t *testing.T) {
 	if !bytes.Equal(key2b.Marshal(), key3.Marshal()) {
 		t.Fatal("key2b and key3 differ")
 	}
+}
+
+func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
+	_, g1, err := bn256.RandomG1(random)
+	if err != nil {
+		return nil, err
+	}
+	_, g2, err := bn256.RandomG2(random)
+	if err != nil {
+		return nil, err
+	}
+	return bn256.Pair(g1, g2), nil
+}
+
+func BenchmarkSetup(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _, err := Setup(rand.Reader, 20)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func EncryptBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, _, err := Setup(rand.Reader, 20)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		message, err := NewRandomMessage(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		b.StartTimer()
+		_, err = Encrypt(nil, params, attrs, message)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkEncrypt_5(b *testing.B) {
+	EncryptBenchmarkHelper(b, 5)
+}
+
+func BenchmarkEncrypt_10(b *testing.B) {
+	EncryptBenchmarkHelper(b, 10)
+}
+
+func BenchmarkEncrypt_15(b *testing.B) {
+	EncryptBenchmarkHelper(b, 15)
+}
+
+func BenchmarkEncrypt_20(b *testing.B) {
+	EncryptBenchmarkHelper(b, 20)
+}
+
+func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, master, err := Setup(rand.Reader, 20)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		message, err := NewRandomMessage(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(nil, params, master, attrs)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		ciphertext, err := Encrypt(nil, params, attrs, message)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		decrypted := Decrypt(key, ciphertext)
+		b.StopTimer()
+
+		if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+			b.Fatal("Original and decrypted messages differ")
+		}
+	}
+}
+
+func BenchmarkDecrypt_5(b *testing.B) {
+	DecryptBenchmarkHelper(b, 5)
+}
+
+func BenchmarkDecrypt_10(b *testing.B) {
+	DecryptBenchmarkHelper(b, 10)
+}
+
+func BenchmarkDecrypt_15(b *testing.B) {
+	DecryptBenchmarkHelper(b, 15)
+}
+
+func BenchmarkDecrypt_20(b *testing.B) {
+	DecryptBenchmarkHelper(b, 20)
 }

@@ -46,10 +46,11 @@ type AccessNode interface {
 	IsLeaf() bool
 	Threshold() int
 	Children() []AccessNode
-	SetChild(index int, child AccessNode)
 	Attribute() *big.Int
 	Index() int
-	SetIndex(index int)
+
+	AsGate() *AccessGate
+	AsLeaf() *AccessLeaf
 
 	Clone() AccessNode
 }
@@ -72,10 +73,6 @@ func (ag *AccessGate) Children() []AccessNode {
 	return ag.Inputs
 }
 
-func (ag *AccessGate) SetChild(index int, child AccessNode) {
-	ag.Inputs[index] = child
-}
-
 func (ag *AccessGate) Attribute() *big.Int {
 	panic("Not a leaf node")
 }
@@ -84,7 +81,11 @@ func (ag *AccessGate) Index() int {
 	panic("Not a leaf node")
 }
 
-func (ag *AccessGate) SetIndex(index int) {
+func (ag *AccessGate) AsGate() *AccessGate {
+	return ag
+}
+
+func (ag *AccessGate) AsLeaf() *AccessLeaf {
 	panic("Not a leaf node")
 }
 
@@ -119,10 +120,6 @@ func (al *AccessLeaf) Children() []AccessNode {
 	panic("Not an internal node")
 }
 
-func (al *AccessLeaf) SetChild(index int, child AccessNode) {
-	panic("Not an internal node")
-}
-
 func (al *AccessLeaf) Attribute() *big.Int {
 	return al.Attr
 }
@@ -131,8 +128,12 @@ func (al *AccessLeaf) Index() int {
 	return al.PrivateKeyIndex
 }
 
-func (al *AccessLeaf) SetIndex(index int) {
-	al.PrivateKeyIndex = index
+func (al *AccessLeaf) AsGate() *AccessGate {
+	panic("Not an internal node")
+}
+
+func (al *AccessLeaf) AsLeaf() *AccessLeaf {
+	return al
 }
 
 func (al *AccessLeaf) Clone() AccessNode {
@@ -228,7 +229,7 @@ func KeyGenNode(random io.Reader, params *Params, key *PrivateKey, q0 *big.Int, 
 		key.D = append(key.D, d)
 		key.R = append(key.R, r)
 
-		node.SetIndex(len(key.D))
+		node.AsLeaf().PrivateKeyIndex = len(key.D)
 	} else {
 		// Decide on a polynomial for this node
 		poly := cryptutils.EmptyPolynomial(node.Threshold() - 1)
@@ -256,6 +257,7 @@ func KeyGen(random io.Reader, params *Params, master MasterKey, tree AccessNode)
 		R:    []*bn256.G2{},
 		Tree: tree,
 	}
+	params.Precache()
 	err := KeyGenNode(random, params, key, (*big.Int)(master), tree)
 	if err != nil {
 		return nil, err
@@ -416,7 +418,7 @@ func PlanDecryption(plan AccessNode, attrs AttributeSet) bool {
 	toSatisfy := plan.Threshold()
 	for i, child := range plan.Children() {
 		if toSatisfy == 0 {
-			plan.SetChild(i, nil)
+			plan.AsGate().Inputs[i] = nil
 		} else {
 			satisfiable := PlanDecryption(child, attrs)
 			if satisfiable {
