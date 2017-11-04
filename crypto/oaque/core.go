@@ -269,8 +269,8 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT)
 // the provided private key.
 func Decrypt(key *PrivateKey, ciphertext *Ciphertext) *bn256.GT {
 	plaintext := bn256.Pair(ciphertext.C, key.A1)
-	invdenominator := new(bn256.GT).Neg(bn256.Pair(key.A0, ciphertext.B))
-	plaintext.Add(plaintext, invdenominator)
+	denominator := bn256.Pair(key.A0, ciphertext.B)
+	plaintext.Add(plaintext, denominator.Neg(denominator))
 	plaintext.Add(ciphertext.A, plaintext)
 	return plaintext
 }

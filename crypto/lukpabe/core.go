@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"vuvuzela.io/crypto/bn256"
 )
 
@@ -31,12 +32,26 @@ type MasterKey *big.Int
 // Zp*.
 type AttributeSet []*big.Int
 
+func (as AttributeSet) IndexOf(attr *big.Int) int {
+	for i, ei := range as {
+		if attr.Cmp(ei) == 0 {
+			return i
+		}
+	}
+	return -1
+}
+
 // AccessNode represents a node of an access tree.
 type AccessNode interface {
 	IsLeaf() bool
 	Threshold() int
 	Children() []AccessNode
+	SetChild(index int, child AccessNode)
 	Attribute() *big.Int
+	Index() int
+	SetIndex(index int)
+
+	Clone() AccessNode
 }
 
 // AccessGate represents an internal node of an access tree.
@@ -57,12 +72,40 @@ func (ag *AccessGate) Children() []AccessNode {
 	return ag.Inputs
 }
 
+func (ag *AccessGate) SetChild(index int, child AccessNode) {
+	ag.Inputs[index] = child
+}
+
 func (ag *AccessGate) Attribute() *big.Int {
 	panic("Not a leaf node")
 }
 
+func (ag *AccessGate) Index() int {
+	panic("Not a leaf node")
+}
+
+func (ag *AccessGate) SetIndex(index int) {
+	panic("Not a leaf node")
+}
+
+func (ag *AccessGate) Clone() *AccessGate {
+	clone := &AccessGate{
+		Thresh: ag.Thresh,
+		Inputs: make([]AccessNode, len(ag.Inputs)),
+	}
+	for i, input := range ag.Inputs {
+		clone.Inputs[i] = input.Clone()
+	}
+	return clone
+}
+
 // AccessLeaf represents a leaf node of an access tree.
-type AccessLeaf big.Int
+type AccessLeaf struct {
+	Attr *big.Int
+
+	// Private-Key-Specific Information, set by KeyGen
+	PrivateKeyIndex int
+}
 
 func (al *AccessLeaf) IsLeaf() bool {
 	return true
@@ -76,14 +119,34 @@ func (al *AccessLeaf) Children() []AccessNode {
 	panic("Not an internal node")
 }
 
+func (al *AccessLeaf) SetChild(index int, child AccessNode) {
+	panic("Not an internal node")
+}
+
 func (al *AccessLeaf) Attribute() *big.Int {
-	return (*big.Int)(al)
+	return al.Attr
+}
+
+func (al *AccessLeaf) Index() int {
+	return al.PrivateKeyIndex
+}
+
+func (al *AccessLeaf) SetIndex(index int) {
+	al.PrivateKeyIndex = index
+}
+
+func (al *AccessLeaf) Clone() *AccessLeaf {
+	return &AccessLeaf{
+		Attr:            new(big.Int).Set(al.Attr),
+		PrivateKeyIndex: al.PrivateKeyIndex,
+	}
 }
 
 // PrivateKey represents a private key for an access tree.
 type PrivateKey struct {
-	D []*bn256.G1
-	R []*bn256.G2
+	D    []*bn256.G1
+	R    []*bn256.G2
+	Tree AccessNode
 }
 
 // Ciphertext represents an encrypted message.
@@ -147,10 +210,57 @@ func (params *Params) Precache() {
 	}
 }
 
-// KeyGen generates a private key for the specified access tree, using the
-// master key.
-func KeyGen(random io.Reader, params *Params, master MasterKey, tree AccessNode) error {
+// KeyGenNode is a recursive helper function for KeyGen.
+func KeyGenNode(random io.Reader, params *Params, key *PrivateKey, q0 *big.Int, node AccessNode) error {
+	if node.IsLeaf() {
+		// Compute the D and R for this leaf
+		rnd, err := RandomInZp(random)
+		if err != nil {
+			return err
+		}
+
+		d := new(bn256.G1).ScalarMult(params.G2, q0)
+		ti := params.T(node.Attribute())
+		d.Add(d, ti.ScalarMult(ti, rnd))
+
+		r := new(bn256.G2).ScalarBaseMult(rnd)
+
+		key.D = append(key.D, d)
+		key.R = append(key.R, r)
+
+		node.SetIndex(len(key.D))
+	} else {
+		// Decide on a polynomial for this node
+		poly := cryptutils.EmptyPolynomial(node.Threshold() - 1)
+		poly[len(poly)-1] = q0
+		poly.RandomFill(random, bn256.Order)
+
+		for j, child := range node.Children() {
+			i := j + 1
+			qi := poly.EvalMod(big.NewInt(int64(i)), bn256.Order)
+			err := KeyGenNode(random, params, key, qi, child)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+// KeyGen generates a private key for the specified access tree, using the
+// master key. It traverses the tree, setting the correct AccessIndex for the
+// tree, to match this private key.
+func KeyGen(random io.Reader, params *Params, master MasterKey, tree AccessNode) (*PrivateKey, error) {
+	key := &PrivateKey{
+		D:    []*bn256.G1{},
+		R:    []*bn256.G2{},
+		Tree: tree,
+	}
+	err := KeyGenNode(random, params, key, (*big.Int)(master), tree)
+	if err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // T implements the function T for a cryptosystem, as described in the paper.
@@ -181,6 +291,9 @@ func (params *Params) T(x *big.Int) *bn256.G1 {
 	return ret
 }
 
+// Encrypt converts the provided message to ciphertext, under the specified
+// attribute set. The argument "s" is the randomness to use; if set to nil,
+// it is generated using crypto/rand.
 func Encrypt(s *big.Int, params *Params, attrs AttributeSet, message *bn256.GT) (*Ciphertext, error) {
 	ciphertext := new(Ciphertext)
 
@@ -208,4 +321,124 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeSet, message *bn256.GT) 
 	ciphertext.Gamma = attrs
 
 	return ciphertext, nil
+}
+
+// DecryptNode is a recursive helper function for Decrypt.
+func DecryptNode(key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn256.GT {
+	if node.IsLeaf() {
+		index := ciphertext.Gamma.IndexOf(node.Attribute())
+		if index == -1 {
+			return nil
+		}
+
+		x := node.Index()
+		power := bn256.Pair(key.D[x], ciphertext.E2)
+		denominator := bn256.Pair(ciphertext.Es[index], key.R[x])
+		power.Add(power, denominator.Neg(denominator))
+		return power
+	}
+
+	toDecrypt := node.Threshold()
+	f := make([]*bn256.GT, 0, toDecrypt)
+	s := make([]int, 0, toDecrypt)
+	for i, child := range node.Children() {
+		if child != nil {
+			q0 := DecryptNode(key, ciphertext, child)
+			if q0 != nil {
+				f = append(f, q0)
+				s = append(s, i+1)
+
+				if len(f) == toDecrypt {
+					break
+				}
+			}
+		}
+	}
+
+	if len(f) != toDecrypt {
+		return nil
+	}
+
+	for k, fz := range f {
+		i := s[k]
+
+		// Compute the Lagrange coefficient, evaluated at x = 0
+		lagrange := big.NewInt(1)
+		for m := 0; m != len(s); m++ {
+			j := s[m]
+			if j != i {
+				lagrange.Mul(lagrange, big.NewInt(int64(-i)))
+				iMinusJ := big.NewInt(int64(i - j))
+				lagrange.Mul(lagrange, iMinusJ.ModInverse(iMinusJ, bn256.Order))
+				lagrange.Mod(lagrange, bn256.Order)
+			}
+		}
+		fz.ScalarMult(fz, lagrange)
+	}
+
+	power := f[0]
+	for i := 1; i != len(f); i++ {
+		power.Add(power, f[i])
+	}
+
+	return power
+}
+
+// PlanDecryption is a function that plans the evaluation of an access tree,
+// in order to decrypt a certain ciphertext. For each node in the access tree,
+// this function sets some of its children to "nil" if those children should not
+// be evaluated in order to perform the decryption (i.e., the pairings at the
+// leaves of those subtrees need not be computed). The goal is to include as
+// few leaves as possible in the remaining tree, such that the output is still
+// 1. That way, we would minimize the number of pairings computed, while still
+// successfully decrypting the ciphertext.
+// If the provided attributes satisfy the access tree, then the function sets
+// "unused" children to nil, and return true. If the provided attributes do not
+// satisfy the access tree, then the function returns false, and the state of
+// the access tree is undefined (in the current implementation, the top-level
+// node will have all of its children set to nil, but this is subject to change
+// if this function is ever revised).
+// Abstractly, given a circuit with threshold gates, we want to find the setting
+// of leaves that satisfies the circuit, and has the fewest number of leaves
+// set. Alternatively, we can think of this problem as boolean satisfiability
+// of an AND-OR circuit, where our objective is to find the solution with the
+// fewest number of inputs set to 1. (Note that if we restrict boolean
+// satisfiability to AND and OR gates, or more generally, to threshold gates,
+// then setting all inputs to 1 will be a solution if one exists.)
+// The solution that I have implemented here is not optimal in general, but I
+// think it is optimal for the access trees we will need for STARWAVE. I
+// suspect that finding a generally optimal solution is an NP-complete problem.
+func PlanDecryption(plan AccessNode, attrs AttributeSet) bool {
+	if plan.IsLeaf() {
+		return attrs.IndexOf(plan.Attribute()) != -1
+	}
+
+	toSatisfy := plan.Threshold()
+	for i, child := range plan.Children() {
+		if toSatisfy == 0 {
+			plan.SetChild(i, nil)
+		} else {
+			satisfiable := PlanDecryption(child, attrs)
+			if satisfiable {
+				toSatisfy--
+			}
+		}
+	}
+	return toSatisfy == 0
+}
+
+// Decrypt recovers the original message from the provided ciphertext, using
+// the provided private key. A custom plan for decryption may be passed in, to
+// speed things up. The plan argument may also be set to nil, in which case a
+// plan is automatically generated and returned.
+func Decrypt(key *PrivateKey, ciphertext *Ciphertext, plan AccessNode) (*bn256.GT, AccessNode) {
+	if plan == nil {
+		plan = key.Tree.Clone()
+		decryptable := PlanDecryption(plan, ciphertext.Gamma)
+		if !decryptable {
+			return nil, nil
+		}
+	}
+	power := DecryptNode(key, ciphertext, key.Tree)
+	return new(bn256.GT).Add(ciphertext.E1, power.Neg(power)), plan
 }

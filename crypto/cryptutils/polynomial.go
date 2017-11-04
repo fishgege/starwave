@@ -2,6 +2,7 @@ package cryptutils
 
 import (
 	"crypto/rand"
+	"io"
 	"math/big"
 )
 
@@ -27,11 +28,11 @@ func (p Polynomial) ZeroFill(n *big.Int) {
 
 // RandomFill fills in all "nil" coefficients of the polynomial with a
 // randomly chosen integer in [0, N).
-func (p Polynomial) RandomFill(n *big.Int) error {
+func (p Polynomial) RandomFill(random io.Reader, n *big.Int) error {
 	for i, b := range p {
 		if b == nil {
 			var err error
-			p[i], err = rand.Int(rand.Reader, n)
+			p[i], err = rand.Int(random, n)
 			if err != nil {
 				return err
 			}
