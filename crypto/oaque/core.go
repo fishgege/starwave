@@ -164,6 +164,39 @@ func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (
 	return key, nil
 }
 
+// DecryptionKey is like QualifyKey, except that the resulting key should only
+// be used for decryption. It should _not_ be delegated to another entity, as it
+// it is not properly re-randomized and could leak information about the parent
+// key.
+func DecryptionKey(params *Params, qualify *PrivateKey, attrs AttributeList) *PrivateKey {
+	k := len(attrs)
+	l := len(params.H)
+	key := &PrivateKey{
+		A0:      new(bn256.G1),
+		A1:      qualify.A1,
+		B:       make([]*bn256.G1, l-k),
+		FreeMap: make(map[AttributeIndex]int),
+	}
+
+	key.A0.Set(qualify.A0)
+
+	bIndex := 0
+	for attrIndex, idx := range qualify.FreeMap {
+		attr, ok := attrs[attrIndex]
+		if ok {
+			attrTerm := new(bn256.G1).Set(qualify.B[idx])
+			attrTerm.ScalarMult(attrTerm, attr)
+			key.A0.Add(key.A0, attrTerm)
+		} else {
+			key.B[bIndex] = qualify.B[idx]
+			key.FreeMap[attrIndex] = bIndex
+			bIndex++
+		}
+	}
+
+	return key
+}
+
 // QualifyKey uses a key to generate a new key with restricted permissions, by
 // adding the the specified attributes. Remember that adding new attributes
 // restricts the permissions. Furthermore, attributes are immutable once set,

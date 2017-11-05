@@ -100,6 +100,29 @@ func TestQualifyKey(t *testing.T) {
 	decryptAndCheckHelper(t, key2, ciphertext, message)
 }
 
+func TestDecryptionKey(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := AttributeList{2: big.NewInt(4)}
+	attrs2 := AttributeList{2: big.NewInt(4), 7: big.NewInt(123)}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, message)
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1)
+	key2 := DecryptionKey(params, key1, attrs2)
+
+	decryptAndCheckHelper(t, key2, ciphertext, message)
+}
+
 func TestAdditiveRandomness(t *testing.T) {
 	// Set up parameters
 	params, masterkey, err := Setup(rand.Reader, 10)
@@ -293,4 +316,64 @@ func BenchmarkDecrypt_15(b *testing.B) {
 
 func BenchmarkDecrypt_20(b *testing.B) {
 	DecryptBenchmarkHelper(b, 20)
+}
+
+func DecryptionKeyBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, master, err := Setup(rand.Reader, 20)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		message, err := NewRandomMessage(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		pseudomaster, err := KeyGen(nil, params, master, AttributeList{})
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		ciphertext, err := Encrypt(nil, params, attrs, message)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		key := DecryptionKey(params, pseudomaster, attrs)
+		b.StopTimer()
+
+		decrypted := Decrypt(key, ciphertext)
+		if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+			b.Fatal("Original and decrypted messages differ")
+		}
+	}
+}
+
+func BenchmarkDecryptionKey_5(b *testing.B) {
+	DecryptionKeyBenchmarkHelper(b, 5)
+}
+
+func BenchmarkDecryptionKey_10(b *testing.B) {
+	DecryptionKeyBenchmarkHelper(b, 10)
+}
+
+func BenchmarkDecryptionKey_15(b *testing.B) {
+	DecryptionKeyBenchmarkHelper(b, 15)
+}
+
+func BenchmarkDecryptionKey_20(b *testing.B) {
+	DecryptionKeyBenchmarkHelper(b, 20)
 }
