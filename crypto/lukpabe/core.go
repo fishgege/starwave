@@ -361,6 +361,13 @@ func DecryptNode(key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn25
 		return nil
 	}
 
+	// Modular inverses are a bit expensive, so we precompute them and reuse
+	inverses := make([]*big.Int, 2*toDecrypt-1)
+	for i := range inverses {
+		inv := big.NewInt(int64(i - toDecrypt + 1))
+		inverses[i] = inv.ModInverse(inv, bn256.Order)
+	}
+
 	for k, fz := range f {
 		i := s[k]
 
@@ -370,8 +377,7 @@ func DecryptNode(key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn25
 			j := s[m]
 			if j != i {
 				lagrange.Mul(lagrange, big.NewInt(int64(-j)))
-				iMinusJ := big.NewInt(int64(i - j))
-				lagrange.Mul(lagrange, iMinusJ.ModInverse(iMinusJ, bn256.Order))
+				lagrange.Mul(lagrange, inverses[i-j+toDecrypt-1])
 				lagrange.Mod(lagrange, bn256.Order)
 			}
 		}
@@ -384,6 +390,53 @@ func DecryptNode(key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn25
 	}
 
 	return power
+}
+
+// DecryptNodeURI uses optimizations specific to STARWAVE's access trees. The
+// access tree is a single gate with many leaves, the first Threshold leaves
+// always work.
+func DecryptNodeURI(params *Params, key *PrivateKey, ciphertext *Ciphertext, node AccessNode) *bn256.GT {
+	lagranges := make([]*big.Int, node.Threshold())
+
+	for k := range lagranges {
+		i := k + 1
+
+		// Compute the Lagrange coefficient, evaluated at x = 0
+		lagrange := big.NewInt(1)
+		for m := 0; m != node.Threshold(); m++ {
+			j := m + 1
+			if j != i {
+				lagrange.Mul(lagrange, big.NewInt(int64(-j)))
+				lagrange.Mul(lagrange, params.InverseTable[i-j+len(params.Ts)-1])
+				lagrange.Mod(lagrange, bn256.Order)
+			}
+		}
+
+		lagranges[k] = lagrange
+	}
+
+	dxPowers := make([]*bn256.G1, node.Threshold())
+	denominators := make([]*bn256.GT, node.Threshold())
+	for i, child := range node.Children() {
+		leaf := child.AsLeaf()
+
+		x := leaf.Index() - 1
+
+		dxPowers[i] = new(bn256.G1).ScalarMult(key.D[x], lagranges[i])
+		denominators[i] = bn256.Pair(new(bn256.G1).ScalarMult(ciphertext.Es[i], lagranges[i]), key.R[x])
+	}
+
+	dxPowerProduct := dxPowers[0]
+	for i := 1; i != len(dxPowers); i++ {
+		dxPowerProduct.Add(dxPowerProduct, dxPowers[i])
+	}
+	numerator := bn256.Pair(dxPowerProduct, ciphertext.E2)
+	denominator := denominators[0]
+	for i := 1; i != len(denominators); i++ {
+		denominator.Add(denominator, denominators[i])
+	}
+
+	return numerator.Add(numerator, denominator.Neg(denominator))
 }
 
 // PlanDecryption is a function that plans the evaluation of an access tree,
@@ -441,6 +494,15 @@ func Decrypt(key *PrivateKey, ciphertext *Ciphertext, plan AccessNode) (*bn256.G
 			return nil, nil
 		}
 	}
-	power := DecryptNode(key, ciphertext, key.Tree)
+	power := DecryptNode(key, ciphertext, plan)
 	return new(bn256.GT).Add(ciphertext.E1, power.Neg(power)), plan
+}
+
+// DecryptSpecific is a version of Decrypt, with optimizations specific to the
+// case where the access tree consists of a single gate, where the first
+// "Threshold" inputs evaluate to true.
+func DecryptSpecific(params *Params, key *PrivateKey, ciphertext *Ciphertext) *bn256.GT {
+	params.Precache()
+	power := DecryptNodeURI(params, key, ciphertext, key.Tree)
+	return new(bn256.GT).Add(ciphertext.E1, power.Neg(power))
 }

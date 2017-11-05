@@ -96,6 +96,34 @@ func TestAccessTreeFail(t *testing.T) {
 	attributeFromMasterHelper(t, attrs, tree, true)
 }
 
+func TestDecryptSpecific(t *testing.T) {
+	attrs := AttributeSet{big.NewInt(13), big.NewInt(15)}
+	tree := &AccessGate{
+		Thresh: 2,
+		Inputs: []AccessNode{&AccessLeaf{Attr: big.NewInt(13)}, &AccessLeaf{Attr: big.NewInt(15)}},
+	}
+
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs, message)
+
+	// Generate key for the single attributes
+	key := genFromMasterHelper(t, params, masterkey, tree)
+
+	decrypted := DecryptSpecific(params, key, ciphertext)
+	if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+		t.Fatal("Original and decrypted messages differ")
+	}
+}
+
 func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
 	_, g1, err := bn256.RandomG1(random)
 	if err != nil {
@@ -166,7 +194,7 @@ func BenchmarkEncrypt_20(b *testing.B) {
 	EncryptBenchmarkHelper(b, 20)
 }
 
-func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
+func DecryptBenchmarkHelper(b *testing.B, numAttributes int, fast bool) {
 	b.StopTimer()
 
 	// Set up parameters
@@ -209,9 +237,16 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
 			b.Fatal(err)
 		}
 
-		b.StartTimer()
-		decrypted, _ := Decrypt(key, ciphertext, tree)
-		b.StopTimer()
+		var decrypted *bn256.GT
+		if fast {
+			b.StartTimer()
+			decrypted = DecryptSpecific(params, key, ciphertext)
+			b.StopTimer()
+		} else {
+			b.StartTimer()
+			decrypted, _ = Decrypt(key, ciphertext, tree)
+			b.StopTimer()
+		}
 
 		if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 			b.Fatal("Original and decrypted messages differ")
@@ -220,17 +255,33 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
 }
 
 func BenchmarkDecrypt_5(b *testing.B) {
-	DecryptBenchmarkHelper(b, 5)
+	DecryptBenchmarkHelper(b, 5, false)
 }
 
 func BenchmarkDecrypt_10(b *testing.B) {
-	DecryptBenchmarkHelper(b, 10)
+	DecryptBenchmarkHelper(b, 10, false)
 }
 
 func BenchmarkDecrypt_15(b *testing.B) {
-	DecryptBenchmarkHelper(b, 15)
+	DecryptBenchmarkHelper(b, 15, false)
 }
 
 func BenchmarkDecrypt_20(b *testing.B) {
-	DecryptBenchmarkHelper(b, 20)
+	DecryptBenchmarkHelper(b, 20, false)
+}
+
+func BenchmarkDecryptSpecific_5(b *testing.B) {
+	DecryptBenchmarkHelper(b, 5, true)
+}
+
+func BenchmarkDecryptSpecific_10(b *testing.B) {
+	DecryptBenchmarkHelper(b, 10, true)
+}
+
+func BenchmarkDecryptSpecific_15(b *testing.B) {
+	DecryptBenchmarkHelper(b, 15, true)
+}
+
+func BenchmarkDecryptSpecific_20(b *testing.B) {
+	DecryptBenchmarkHelper(b, 20, true)
 }
