@@ -28,7 +28,7 @@ type MasterKey *bn256.G1
 
 // AttributeIndex represents an attribute --- specifically, its index in the
 // array of attributes.
-type AttributeIndex uint8
+type AttributeIndex int
 
 // AttributeList represents a list of attributes. It is map from each set
 // attribute (by its index) to the value of that attribute.
