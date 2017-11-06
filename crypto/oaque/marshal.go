@@ -36,6 +36,11 @@ func (params *Params) Marshal() []byte {
 
 // Unmarshal recovers the parameters from an encoded byte slice.
 func (params *Params) Unmarshal(marshalled []byte) (*Params, bool) {
+
+	if params.Pairing.Load() != nil {
+		panic("Don't re-use a params object")
+	}
+
 	if len(marshalled)&((1<<geShift)-1) != 0 {
 		return nil, false
 	}
@@ -69,9 +74,6 @@ func (params *Params) Unmarshal(marshalled []byte) (*Params, bool) {
 			return params, false
 		}
 	}
-
-	// Clear any cached values
-	params.Pairing = nil
 
 	return params, true
 }

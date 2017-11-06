@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"io"
 	"math/big"
+	"sync"
+	"sync/atomic"
 
 	"vuvuzela.io/crypto/bn256"
 )
@@ -19,7 +21,9 @@ type Params struct {
 	H  []*bn256.G1
 
 	// Some cached state
-	Pairing *bn256.GT
+	Pairing atomic.Value
+	// If the pairing is unset, it will be set while holding this mutex
+	PairingMutex sync.Mutex
 }
 
 // MasterKey represents the key for a hierarchy that can create a key for any
@@ -260,8 +264,12 @@ func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs Attribute
 // (especially Encrypt) multiple times concurrently, you should call this first,
 // to eliminate race conditions.
 func (params *Params) Precache() {
-	if params.Pairing == nil {
-		params.Pairing = bn256.Pair(params.G2, params.G1)
+	if params.Pairing.Load() == nil {
+		params.PairingMutex.Lock()
+		if params.Pairing.Load() == nil {
+			params.Pairing.Store(bn256.Pair(params.G2, params.G1))
+		}
+		params.PairingMutex.Unlock()
 	}
 }
 
@@ -281,9 +289,10 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT)
 	}
 
 	params.Precache()
+	pairing := params.Pairing.Load().(*bn256.GT)
 
 	ciphertext.A = new(bn256.GT)
-	ciphertext.A.ScalarMult(params.Pairing, s)
+	ciphertext.A.ScalarMult(pairing, s)
 	ciphertext.A.Add(ciphertext.A, message)
 
 	ciphertext.B = new(bn256.G2).ScalarMult(params.G, s)
