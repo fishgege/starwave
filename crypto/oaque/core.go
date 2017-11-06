@@ -275,7 +275,8 @@ func (params *Params) Precache() {
 
 // Encrypt converts the provided message to ciphertext, using the provided ID
 // as the public key. The argument "s" is the randomness to use, and should be
-// an integer chosen uniformly at random from Zp.
+// an integer chosen uniformly at random from Zp. If nil, "s" will be generated
+// from crypto/rand
 func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT) (*Ciphertext, error) {
 	ciphertext := &Ciphertext{}
 
