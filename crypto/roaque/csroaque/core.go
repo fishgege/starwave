@@ -47,8 +47,11 @@ type PrivateKey struct {
 type RevocationList []int
 
 type Ciphertext struct {
-	cipher []*oaque.Ciphertext
+	cipher     *oaque.Ciphertext
+	lEnd, rEnd *int
 }
+
+type CiphertextList []*Ciphertext
 
 func BuildBEtree(random io.Reader, l int, left int, right int) (*paramsNode, *masterKeyNode, error) {
 	if left > right {
@@ -171,6 +174,10 @@ func treeQualifyKey(pNode *paramsNode, qNode *privateKeyNode, left int, right in
 		return nil, nil
 	}
 
+	if qNode == nil {
+		return nil, nil
+	}
+
 	var err error
 	node := &privateKeyNode{}
 
@@ -221,10 +228,15 @@ func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, 
 	return key, nil
 }
 
-func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) ([]*oaque.Ciphertext, error) {
+func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) (CiphertextList, error) {
 	if left > right {
 		return nil, nil
 	}
+
+	if pNode == nil {
+		return nil, nil
+	}
+
 	flag := false
 	// This check can be reduced to O(log r), if we build segment tree on top of RevocationList
 	for i, rev := range revoc {
@@ -235,19 +247,21 @@ func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeLi
 	}
 
 	if !flag {
-		var cipher []*oaque.Ciphertext
-		cipher = make([]*oaque.Ciphertext, 1, 1)
+		var cipher CiphertextList
+		cipher = make(CiphertextList, 1, 1)
 		var err error
-		cipher[0], err = oaque.Encrypt(nil, pNode.params, attrs, message)
+		cipher[0].cipher, err = oaque.Encrypt(nil, pNode.params, attrs, message)
 		if err != nil {
 			return nil, err
 		}
+		cipher[0].lEnd, cipher[0].rEnd = new(int), new(int)
+		*cipher[0].lEnd, *cipher[0].rEnd = left, right
 
 		return cipher, nil
 	}
 
 	var err error
-	var cipherLeft, cipherRight []*oaque.Ciphertext
+	var cipherLeft, cipherRight CiphertextList
 	mid := (left + right) / 2 // note should be div
 	cipherLeft, err = treeEncrypt(pNode.left, left, mid, attrs, revoc, message)
 	if err != nil {
@@ -259,8 +273,11 @@ func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeLi
 		return nil, err
 	}
 
-	cipher := make([]*oaque.Ciphertext, 0, len(cipherLeft)+len(cipherRight))
+	cipher := make(CiphertextList, 0, len(cipherLeft)+len(cipherRight))
+	cipher = append(cipher, cipherLeft...)
+	cipher = append(cipher, cipherRight...)
 
+	return cipher, nil
 }
 
 // No function for revocation, since this is a stateless revocation scheme. User
@@ -268,12 +285,49 @@ func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeLi
 
 // Encrypt converts the provided message to ciphertext, using the provided ID
 // as the public key.
-func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) (*Ciphertext, error) {
-	ciphertext := &Ciphertext{}
+func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) (CiphertextList, error) {
+	var ciphertext CiphertextList
 	var err error
-	ciphertext.cipher, err = treeEncrypt(params.root, 1, *params.userSize, attrs, revoc, message)
+	ciphertext, err = treeEncrypt(params.root, 1, *params.userSize, attrs, revoc, message)
 	if err != nil {
 		return nil, err
 	}
 	return ciphertext, nil
+}
+
+func treeDecrypt(pNode *privateKeyNode, left int, right int, ciphertext CiphertextList) *bn256.GT {
+	if left > right {
+		return nil
+	}
+
+	if pNode == nil {
+		return nil
+	}
+	// This can be optimized to O(1).
+	for i, cip := range ciphertext {
+		if left == *cip.lEnd && right == *cip.rEnd {
+			plaintext := oaque.Decrypt(pNode.privateKey, cip.cipher)
+			return plaintext
+		}
+	}
+
+	var plaintext *bn256.GT
+	mid := (left + right) / 2
+	plaintext = treeDecrypt(pNode.left, left, mid, ciphertext)
+	if plaintext != nil {
+		return plaintext
+	}
+	plaintext = treeDecrypt(pNode.right, mid+1, right, ciphertext)
+	if plaintext != nil {
+		return plaintext
+	}
+
+	return nil
+}
+
+// Decrypt recovers the original message from the provided ciphertext, using
+// the provided private key.
+func Decrypt(params *Params, key *PrivateKey, ciphertext CiphertextList) *bn256.GT {
+	plaintext := treeDecrypt(key.root, 1, *params.userSize, ciphertext)
+	return plaintext
 }
