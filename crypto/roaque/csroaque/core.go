@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"vuvuzela.io/crypto/bn256"
 )
 
 type paramsNode struct {
@@ -41,6 +42,12 @@ type privateKeyNode struct {
 type PrivateKey struct {
 	root       *privateKeyNode
 	lEnd, rEnd *int
+}
+
+type RevocationList []int
+
+type Ciphertext struct {
+	cipher []*oaque.Ciphertext
 }
 
 func BuildBEtree(random io.Reader, l int, left int, right int) (*paramsNode, *masterKeyNode, error) {
@@ -198,7 +205,7 @@ func treeQualifyKey(pNode *paramsNode, qNode *privateKeyNode, left int, right in
 // restricts the permissions. Furthermore, attributes are immutable once set,
 // so the attrs map must contain mappings for attributes that are already set.
 // The attrs argument is a mapping from attribute to its value; attributes
-// not in the map are not set.
+// not in the map are not set. lEnd and rEnd specify the UserID range to be delegated
 func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, lEnd int, rEnd int) (*PrivateKey, error) {
 	key := &PrivateKey{}
 	var err error
@@ -214,5 +221,59 @@ func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, 
 	return key, nil
 }
 
+func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) ([]*oaque.Ciphertext, error) {
+	if left > right {
+		return nil, nil
+	}
+	flag := false
+	// This check can be reduced to O(log r), if we build segment tree on top of RevocationList
+	for i, rev := range revoc {
+		if left <= rev && rev <= right {
+			flag = true
+			break
+		}
+	}
+
+	if !flag {
+		var cipher []*oaque.Ciphertext
+		cipher = make([]*oaque.Ciphertext, 1, 1)
+		var err error
+		cipher[0], err = oaque.Encrypt(nil, pNode.params, attrs, message)
+		if err != nil {
+			return nil, err
+		}
+
+		return cipher, nil
+	}
+
+	var err error
+	var cipherLeft, cipherRight []*oaque.Ciphertext
+	mid := (left + right) / 2 // note should be div
+	cipherLeft, err = treeEncrypt(pNode.left, left, mid, attrs, revoc, message)
+	if err != nil {
+		return nil, err
+	}
+
+	cipherRight, err = treeEncrypt(pNode.right, mid+1, right, attrs, revoc, message)
+	if err != nil {
+		return nil, err
+	}
+
+	cipher := make([]*oaque.Ciphertext, 0, len(cipherLeft)+len(cipherRight))
+
+}
+
 // No function for revocation, since this is a stateless revocation scheme. User
-// only need to specify revocation list for each URI during encryption.
+// only need to specify revocation list along with URI during encryption.
+
+// Encrypt converts the provided message to ciphertext, using the provided ID
+// as the public key.
+func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) (*Ciphertext, error) {
+	ciphertext := &Ciphertext{}
+	var err error
+	ciphertext.cipher, err = treeEncrypt(params.root, 1, *params.userSize, attrs, revoc, message)
+	if err != nil {
+		return nil, err
+	}
+	return ciphertext, nil
+}
