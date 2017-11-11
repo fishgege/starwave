@@ -162,6 +162,9 @@ func KeyGen(params *Params, master *MasterKey, attrs oaque.AttributeList, userNu
 	if err != nil {
 		return nil, err
 	}
+
+	key.lEnd, key.rEnd = new(int), new(int)
+	*key.lEnd, *key.rEnd = lEnd, rEnd
 	return key, nil
 }
 
@@ -239,8 +242,8 @@ func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeLi
 
 	flag := false
 	// This check can be reduced to O(log r), if we build segment tree on top of RevocationList
-	for i, rev := range revoc {
-		if left <= rev && rev <= right {
+	for i := range revoc {
+		if left <= revoc[i] && revoc[i] <= right {
 			flag = true
 			break
 		}
@@ -249,6 +252,7 @@ func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeLi
 	if !flag {
 		var cipher CiphertextList
 		cipher = make(CiphertextList, 1, 1)
+		cipher[0] = new(Ciphertext)
 		var err error
 		cipher[0].cipher, err = oaque.Encrypt(nil, pNode.params, attrs, message)
 		if err != nil {
@@ -304,9 +308,9 @@ func treeDecrypt(pNode *privateKeyNode, left int, right int, ciphertext Cipherte
 		return nil
 	}
 	// This can be optimized to O(1).
-	for i, cip := range ciphertext {
-		if left == *cip.lEnd && right == *cip.rEnd {
-			plaintext := oaque.Decrypt(pNode.privateKey, cip.cipher)
+	for i := range ciphertext {
+		if left == *ciphertext[i].lEnd && right == *ciphertext[i].rEnd {
+			plaintext := oaque.Decrypt(pNode.privateKey, ciphertext[i].cipher)
 			return plaintext
 		}
 	}
