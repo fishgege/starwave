@@ -61,6 +61,10 @@ type Ciphertext struct {
 	C *bn256.G1
 }
 
+// PartialEncryption represents an attribute set that has been "prepared" for
+// fast encryption in a particular OAQUE system.
+type PartialEncryption bn256.G1
+
 // FreeAttributes returns the indexes of unbound attributes.
 func (privkey *PrivateKey) FreeAttributes() []AttributeIndex {
 	free := make([]AttributeIndex, len(privkey.FreeMap))
@@ -278,6 +282,26 @@ func (params *Params) Precache() {
 // an integer chosen uniformly at random from Zp. If nil, "s" will be generated
 // from crypto/rand
 func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT) (*Ciphertext, error) {
+	return EncryptPrecomputed(s, params, PrecomputeEncryption(params, attrs), message)
+}
+
+// PrecomputeEncryption performs precomputation for the provided attribute list,
+// to speed up future encryption with that attribute list. The returned
+// precomputed result can be safely reused multiple times. This can be useful
+// if you are repeatedly encrypting with the same attribute list and want to
+// speed things up.
+func PrecomputeEncryption(params *Params, attrs AttributeList) *PartialEncryption {
+	c := new(bn256.G1).Set(params.G3)
+	for attrIndex, attr := range attrs {
+		h := new(bn256.G1).ScalarMult(params.H[attrIndex], attr)
+		c.Add(c, h)
+	}
+	return (*PartialEncryption)(c)
+}
+
+// EncryptPrecomputed encrypts the provided message, using the provided
+// precomputation to speed up the process.
+func EncryptPrecomputed(s *big.Int, params *Params, precomputed *PartialEncryption, message *bn256.GT) (*Ciphertext, error) {
 	ciphertext := &Ciphertext{}
 
 	// Randomly choose s in Zp
@@ -298,12 +322,7 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT)
 
 	ciphertext.B = new(bn256.G2).ScalarMult(params.G, s)
 
-	ciphertext.C = new(bn256.G1).Set(params.G3)
-	for attrIndex, attr := range attrs {
-		h := new(bn256.G1).ScalarMult(params.H[attrIndex], attr)
-		ciphertext.C.Add(ciphertext.C, h)
-	}
-	ciphertext.C.ScalarMult(ciphertext.C, s)
+	ciphertext.C = new(bn256.G1).ScalarMult((*bn256.G1)(precomputed), s)
 
 	return ciphertext, nil
 }
