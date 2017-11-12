@@ -16,13 +16,13 @@ func ValidateURIComponent(uri string) bool {
 	return true
 }
 
-func ParseURIFromPath(uriPath []string) ([]IDComponent, error) {
+func ParseURIFromPath(uriPath []string) (URIPath, error) {
 	if len(uriPath) > MaxURILength {
 		return nil, errors.New("URI too long")
 	}
 
 	prefix := false
-	components := make([]IDComponent, 0, len(uriPath)+1)
+	components := make(URIPath, 0, len(uriPath)+1)
 	for i, name := range uriPath {
 		if !ValidateURIComponent(name) {
 			return nil, fmt.Errorf("'%s' is not a valid URI component", name)
@@ -47,7 +47,7 @@ func ParseURIFromPath(uriPath []string) ([]IDComponent, error) {
 	return components, nil
 }
 
-func ParseURI(uri string) ([]IDComponent, error) {
+func ParseURI(uri string) (URIPath, error) {
 	rawComponents := strings.Split(uri, "/")
 	filteredComponents := make([]string, 0, len(rawComponents))
 	for _, rawComponent := range rawComponents {

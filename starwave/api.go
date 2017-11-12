@@ -4,16 +4,20 @@ import (
 	"crypto/rand"
 	"io"
 	"math/big"
+	"time"
 
 	"github.com/SoftwareDefinedBuildings/starwave/core"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
-	"golang.org/x/crypto/nacl/secretbox"
 )
 
 type HierarchyDescriptor struct {
 	Nickname string
 	Params   *oaque.Params
+}
+
+func (hd *HierarchyDescriptor) HashToZp() *big.Int {
+	return cryptutils.HashToZp(hd.Params.Marshal())
 }
 
 type DecryptionKey struct {
@@ -27,6 +31,36 @@ type Permission struct {
 	Time core.TimePath
 }
 
+func ParsePermission(uri string, time time.Time) (*Permission, error) {
+	uriPath, err := core.ParseURI(uri)
+	if err != nil {
+		return nil, err
+	}
+	timePath, err := core.ParseTime(time)
+	if err != nil {
+		return nil, err
+	}
+	return &Permission{
+		URI:  uriPath,
+		Time: timePath,
+	}, nil
+}
+
+func ParsePermissionFromPath(uriPrefix []string, timePrefix []uint16) (*Permission, error) {
+	uriPath, err := core.ParseURIFromPath(uriPrefix)
+	if err != nil {
+		return nil, err
+	}
+	timePath, err := core.ParseTimeFromPath(timePrefix)
+	if err != nil {
+		return nil, err
+	}
+	return &Permission{
+		URI:  uriPath,
+		Time: timePath,
+	}, nil
+}
+
 func (p *Permission) AttributeSet() oaque.AttributeList {
 	return core.AttributeSetFromPaths(p.URI, p.Time)
 }
@@ -37,15 +71,20 @@ type EntityDescriptor struct {
 }
 
 type EntitySecret struct {
-	Key oaque.MasterKey
+	Key        oaque.MasterKey
+	Descriptor *EntityDescriptor
 }
 
 type BroadeningDelegation struct {
-	EncryptedMessage
+	Delegation *EncryptedMessage
+	From       *EntityDescriptor
+	To         *EntityDescriptor
 }
 
 type BroadeningDelegationWithKey struct {
-	EncryptedMessage
+	Key       *EncryptedMessage
+	To        *EntityDescriptor
+	Hierarchy *HierarchyDescriptor
 }
 
 type EncryptedSymmetricKey struct {
@@ -71,15 +110,15 @@ const (
 	TimeDepth   = core.MaxTimeLength
 )
 
-func CreateHierarchy(random io.Reader, uriDepth int, nickname string) (*HierarchyDescriptor, *DecryptionKey, error) {
-	numSlots := uriDepth + TimeDepth
+func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *DecryptionKey, error) {
+	numSlots := MaxURIDepth + TimeDepth
 
 	params, masterKey, err := oaque.Setup(rand.Reader, numSlots)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	randomInt, err := oaque.RandomInZp(rand.Reader)
+	randomInt, err := oaque.RandomInZp(random)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,24 +145,140 @@ func CreateHierarchy(random io.Reader, uriDepth int, nickname string) (*Hierarch
 	return hd, decryptionKey, nil
 }
 
-func DelegateRaw(random io.Reader, hd *HierarchyDescriptor, from *DecryptionKey, perm *Permission) (*DecryptionKey, error) {
+func DelegateRaw(random io.Reader, from *DecryptionKey, perm *Permission) (*DecryptionKey, error) {
+	attrs := perm.AttributeSet()
+
+	t, err := oaque.RandomInZp(random)
+	if err != nil {
+		return nil, err
+	}
+	qualified, err := oaque.QualifyKey(t, from.Hierarchy.Params, from.Key, attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DecryptionKey{
+		Hierarchy:   from.Hierarchy,
+		Key:         qualified,
+		Permissions: perm,
+	}, nil
+
 	return nil, nil
 }
 
-func CreateEntity(random io.Reader, hd *HierarchyDescriptor) (*EntityDescriptor, *EntitySecret, error) {
-	return nil, nil, nil
+func CreateEntity(random io.Reader, nickname string) (*EntityDescriptor, *EntitySecret, error) {
+	// One extra slot at the end, for the hierarchy name
+	numSlots := MaxURIDepth + TimeDepth + 1
+
+	params, masterKey, err := oaque.Setup(rand.Reader, numSlots)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	entity := &EntityDescriptor{
+		Nickname: nickname,
+		Params:   params,
+	}
+
+	secret := &EntitySecret{
+		Key:        masterKey,
+		Descriptor: entity,
+	}
+
+	return entity, secret, nil
 }
 
-func DelegateBroadening(random io.Reader, from *EntitySecret, to *EntityDescriptor, perm *Permission) (*BroadeningDelegation, error) {
-	return nil, nil
+func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, to *EntityDescriptor, perm *Permission) (*BroadeningDelegation, error) {
+	attrs := perm.AttributeSet()
+	attrs[MaxURIDepth+TimeDepth] = hd.HashToZp()
+
+	s, err := oaque.RandomInZp(random)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := oaque.KeyGen(s, hd.Params, from.Key, attrs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Encrypt key from "From" system under same attribute set in "To" system
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrecomputeEncryption(to.Params, attrs), key.Marshal())
+	if err != nil {
+		return nil, err
+	}
+
+	return &BroadeningDelegation{
+		Delegation: &EncryptedMessage{
+			Key: &EncryptedSymmetricKey{
+				Ciphertext:  encryptedKey,
+				Permissions: perm,
+			},
+			Message: encryptedMessage,
+		},
+		From: from.Descriptor,
+		To:   to,
+	}, nil
 }
 
 func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *EntityDescriptor, perm *Permission) (*BroadeningDelegationWithKey, error) {
-	return nil, nil
+	attrs := perm.AttributeSet()
+	attrs[MaxURIDepth+TimeDepth] = from.Hierarchy.HashToZp()
+
+	key, err := DelegateRaw(random, from, perm)
+	if err != nil {
+		return nil, err
+	}
+
+	// Encrypt key from "From" system under same attribute set in "To" system
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrecomputeEncryption(to.Params, attrs), key.Key.Marshal())
+	if err != nil {
+		return nil, err
+	}
+
+	return &BroadeningDelegationWithKey{
+		Key: &EncryptedMessage{
+			Key: &EncryptedSymmetricKey{
+				Ciphertext:  encryptedKey,
+				Permissions: perm,
+			},
+			Message: encryptedMessage,
+		},
+		To: to,
+	}, nil
 }
 
 func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegation, to *EntitySecret) *DecryptionKey {
-	return nil
+	key := oaque.DecryptionKeyFromMaster(to.Descriptor.Params, to.Key, make(oaque.AttributeList))
+	for i := len(rest) - 1; i >= 0; i-- {
+		delegation := rest[i]
+		perm := delegation.Delegation.Key.Permissions
+		subkey := oaque.DecryptionKey(delegation.To.Params, key, perm.AttributeSet())
+		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey)
+		if !ok {
+			return nil
+		}
+		key, ok = key.Unmarshal(nextKeyBytes)
+		if !ok {
+			return nil
+		}
+	}
+
+	perm := first.Key.Key.Permissions
+	subkey := oaque.DecryptionKey(first.To.Params, key, perm.AttributeSet())
+	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey)
+	if !ok {
+		return nil
+	}
+	key, ok = key.Unmarshal(finalKeyBytes)
+	if !ok {
+		return nil
+	}
+	return &DecryptionKey{
+		Hierarchy:   first.Hierarchy,
+		Key:         key,
+		Permissions: perm,
+	}
 }
 
 func Encrypt(random io.Reader, hd *HierarchyDescriptor, perm *Permission, message []byte) (*EncryptedMessage, error) {
@@ -146,25 +301,22 @@ func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission) *Encryptor {
 }
 
 func (e *Encryptor) Encrypt(random io.Reader, message []byte) (*EncryptedMessage, error) {
-	var key [32]byte
-	encryptedKey, err := e.GenerateEncryptedSymmetricKey(random, key[:])
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, e.Hierarchy.Params, e.Precomputed, message)
 	if err != nil {
 		return nil, err
 	}
 
-	var nonce [24]byte
-	output := make([]byte, len(message)+secretbox.Overhead)
-	secretbox.Seal(output, message, &nonce, &key)
-
 	return &EncryptedMessage{
-		Key:     encryptedKey,
-		Message: output,
+		Key: &EncryptedSymmetricKey{
+			Ciphertext:  encryptedKey,
+			Permissions: e.Permissions,
+		},
+		Message: encryptedMessage,
 	}, nil
 }
 
 func (e *Encryptor) GenerateEncryptedSymmetricKey(random io.Reader, symm []byte) (*EncryptedSymmetricKey, error) {
-	_, hashesToKey := cryptutils.GenerateKey(symm)
-	ct, err := oaque.EncryptPrecomputed(nil, e.Hierarchy.Params, e.Precomputed, hashesToKey)
+	ct, err := core.GenerateEncryptedSymmetricKey(random, e.Hierarchy.Params, e.Precomputed, symm)
 	if err != nil {
 		return nil, err
 	}
@@ -191,12 +343,7 @@ func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
 }
 
 func (d *Decryptor) Decrypt(c *EncryptedMessage) []byte {
-	var sk [32]byte
-	d.DecryptSymmetricKey(c.Key, sk[:])
-
-	var nonce [24]byte
-	output := make([]byte, len(c.Message)-secretbox.Overhead)
-	message, ok := secretbox.Open(output, c.Message, &nonce, &sk)
+	message, ok := core.HybridDecrypt(c.Key.Ciphertext, c.Message, (*oaque.PrivateKey)(d))
 	if !ok {
 		return nil
 	}
@@ -204,7 +351,5 @@ func (d *Decryptor) Decrypt(c *EncryptedMessage) []byte {
 }
 
 func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte) []byte {
-	key := (*oaque.PrivateKey)(d)
-	hashesToKey := oaque.Decrypt(key, c.Ciphertext)
-	return cryptutils.GTToSecretKey(hashesToKey, symm)
+	return core.DecryptSymmetricKey((*oaque.PrivateKey)(d), c.Ciphertext, symm)
 }

@@ -172,6 +172,36 @@ func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (
 	return key, nil
 }
 
+// DecryptionKeyFromMaster is like KeyGen, except that the resulting key should
+// only be used for decryption. It should _not_ be delegated to another entity,
+// as it is not properly re-randomized and could leak the master key.
+func DecryptionKeyFromMaster(params *Params, master MasterKey, attrs AttributeList) *PrivateKey {
+	key := &PrivateKey{}
+	k := len(attrs)
+	l := len(params.H)
+
+	product := new(bn256.G1).Set(params.G3)
+	key.B = make([]*bn256.G1, l-k)
+	key.FreeMap = make(map[AttributeIndex]int)
+	j := 0
+	for i, h := range params.H {
+		attrIndex := AttributeIndex(i)
+		if attr, ok := attrs[attrIndex]; ok {
+			hi := new(bn256.G1).ScalarMult(h, attr)
+			product.Add(product, hi)
+		} else {
+			key.B[j] = new(bn256.G1).Set(h)
+			key.FreeMap[attrIndex] = j
+			j++
+		}
+	}
+
+	key.A0 = new(bn256.G1).Add(master, product)
+	key.A1 = new(bn256.G2).Set(params.G)
+
+	return key
+}
+
 // DecryptionKey is like QualifyKey, except that the resulting key should only
 // be used for decryption. It should _not_ be delegated to another entity, as it
 // it is not properly re-randomized and could leak information about the parent
