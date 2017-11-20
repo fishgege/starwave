@@ -203,6 +203,33 @@ func TestNonDelegableKeyFromMaster(t *testing.T) {
 	decryptAndCheckHelper(t, key2, ciphertext, message)
 }
 
+func TestResampleKey(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := AttributeList{2: big.NewInt(4)}
+	attrs2 := AttributeList{2: big.NewInt(4), 7: big.NewInt(123)}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, message)
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1)
+	key2, err := ResampleKey(nil, params, PrepareAttributeSet(params, attrs1), key1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key3 := NonDelegableKey(params, key2, attrs2)
+
+	decryptAndCheckHelper(t, key3, ciphertext, message)
+}
+
 func TestAdditiveRandomness(t *testing.T) {
 	// Set up parameters
 	params, masterkey, err := Setup(rand.Reader, 10)
@@ -693,4 +720,55 @@ func BenchmarkVerifyCached_15(b *testing.B) {
 
 func BenchmarkVerifyCached_20(b *testing.B) {
 	VerifyCachedBenchmarkHelper(b, 20)
+}
+
+func ResampleKeyBenchmarkHelper(b *testing.B, numAttributes int, delegable bool) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, master, err := Setup(rand.Reader, 20)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(nil, params, master, attrs)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		precomputed := PrepareAttributeSet(params, attrs)
+
+		b.StartTimer()
+		_, err = ResampleKey(nil, params, precomputed, key, delegable)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkResampleKey_5(b *testing.B) {
+	ResampleKeyBenchmarkHelper(b, 5, false)
+}
+
+func BenchmarkResampleKey_10(b *testing.B) {
+	ResampleKeyBenchmarkHelper(b, 10, false)
+}
+
+func BenchmarkResampleKey_15(b *testing.B) {
+	ResampleKeyBenchmarkHelper(b, 15, false)
+}
+
+func BenchmarkResampleKey_20(b *testing.B) {
+	ResampleKeyBenchmarkHelper(b, 20, false)
 }

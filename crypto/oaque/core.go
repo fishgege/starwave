@@ -236,40 +236,6 @@ func NonDelegableKeyFromMaster(params *Params, master MasterKey, attrs Attribute
 	return key
 }
 
-// NonDelegableKey is like QualifyKey, except that the resulting key should only
-// be used for decryption or signing. This is significantly faster than the
-// QualifyKey function. However, the output should _not_ be delegated to another
-// entity, as it is not properly re-randomized and could leak information about
-// the parent key.
-func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *PrivateKey {
-	k := len(attrs)
-	l := len(params.H)
-	key := &PrivateKey{
-		A0:      new(bn256.G1),
-		A1:      qualify.A1,
-		B:       make([]*bn256.G1, l-k),
-		FreeMap: make(map[AttributeIndex]int),
-	}
-
-	key.A0.Set(qualify.A0)
-
-	bIndex := 0
-	for attrIndex, idx := range qualify.FreeMap {
-		attr, ok := attrs[attrIndex]
-		if ok {
-			attrTerm := new(bn256.G1).Set(qualify.B[idx])
-			attrTerm.ScalarMult(attrTerm, attr)
-			key.A0.Add(key.A0, attrTerm)
-		} else {
-			key.B[bIndex] = qualify.B[idx]
-			key.FreeMap[attrIndex] = bIndex
-			bIndex++
-		}
-	}
-
-	return key
-}
-
 // QualifyKey uses a key to generate a new key with restricted permissions, by
 // adding the the specified attributes. Remember that adding new attributes
 // restricts the permissions. Furthermore, attributes are immutable once set,
@@ -326,6 +292,84 @@ func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs Attribute
 	key.A1.Add(qualify.A1, key.A1)
 
 	return key, nil
+}
+
+// NonDelegableKey is like QualifyKey, except that the resulting key should only
+// be used for decryption or signing. This is significantly faster than the
+// QualifyKey function. However, the output should _not_ be delegated to another
+// entity, as it is not properly re-randomized and could leak information about
+// the parent key.
+func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *PrivateKey {
+	k := len(attrs)
+	l := len(params.H)
+	key := &PrivateKey{
+		A0:      new(bn256.G1),
+		A1:      qualify.A1,
+		B:       make([]*bn256.G1, l-k),
+		FreeMap: make(map[AttributeIndex]int),
+	}
+
+	key.A0.Set(qualify.A0)
+
+	bIndex := 0
+	for attrIndex, idx := range qualify.FreeMap {
+		attr, ok := attrs[attrIndex]
+		if ok {
+			attrTerm := new(bn256.G1).Set(qualify.B[idx])
+			attrTerm.ScalarMult(attrTerm, attr)
+			key.A0.Add(key.A0, attrTerm)
+		} else {
+			key.B[bIndex] = qualify.B[idx]
+			key.FreeMap[attrIndex] = bIndex
+			bIndex++
+		}
+	}
+
+	return key
+}
+
+// ResampleKey uses the provided private key to sample a new private key with
+// the same capability, using the provided randomness t. If t is nil, then the
+// new private key is sampled uniformly at random. If delegable is true, the
+// new private key can be qualified via QualifyKey or NonDelegableKey, but this
+// function takes longer to execute. If delegable is false, the resulting
+// private key cannot be used with QualifyKey or NonDelegableKey, but resampling
+// is faster.
+// Because each private key produces a disjoint distribution of signatures for
+// messages, resampling the key before producing a signature allows for
+// "anonymous" signature.
+func ResampleKey(t *big.Int, params *Params, precomputed *PreparedAttributeList, key *PrivateKey, delegable bool) (*PrivateKey, error) {
+	resampled := &PrivateKey{
+		A0: new(bn256.G1),
+		A1: new(bn256.G2),
+	}
+
+	// Randomly choose t in Zp
+	if t == nil {
+		var err error
+		t, err = RandomInZp(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	resampled.A0.ScalarMult((*bn256.G1)(precomputed), t)
+	resampled.A0.Add(resampled.A0, key.A0)
+
+	resampled.A1.ScalarMult(params.G, t)
+	resampled.A1.Add(resampled.A1, key.A1)
+
+	if delegable {
+		resampled.B = make([]*bn256.G1, len(key.B), cap(key.B))
+		for attrIndex, bIndex := range key.FreeMap {
+			h := new(bn256.G1).ScalarMult(params.H[attrIndex], t)
+			h.Add(h, key.B[bIndex])
+			resampled.B[bIndex] = h
+		}
+		resampled.FreeMap = key.FreeMap
+	}
+
+	return resampled, nil
 }
 
 // Precache forces "cached params" to be computed. Normally, they are computed
