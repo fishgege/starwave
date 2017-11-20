@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 )
 
-func HybridEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.PartialEncryption, message []byte) (*oaque.Ciphertext, []byte, error) {
+func HybridEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.PreparedAttributeList, message []byte) (*oaque.Ciphertext, []byte, error) {
 	var key [32]byte
 	encryptedKey, err := GenerateEncryptedSymmetricKey(random, params, precomputed, key[:])
 	if err != nil {
@@ -22,7 +22,7 @@ func HybridEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.Pa
 	return encryptedKey, output, nil
 }
 
-func GenerateEncryptedSymmetricKey(random io.Reader, params *oaque.Params, precomputed *oaque.PartialEncryption, symm []byte) (*oaque.Ciphertext, error) {
+func GenerateEncryptedSymmetricKey(random io.Reader, params *oaque.Params, precomputed *oaque.PreparedAttributeList, symm []byte) (*oaque.Ciphertext, error) {
 	_, hashesToKey := cryptutils.GenerateKey(symm)
 	ct, err := oaque.EncryptPrecomputed(nil, params, precomputed, hashesToKey)
 	if err != nil {

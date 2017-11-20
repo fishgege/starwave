@@ -135,7 +135,7 @@ type EncryptedMessage struct {
 type Encryptor struct {
 	Hierarchy   *HierarchyDescriptor
 	Permissions *Permission
-	Precomputed *oaque.PartialEncryption
+	Precomputed *oaque.PreparedAttributeList
 }
 
 // Decryptor represents an object storing cached state that allows fast
@@ -255,7 +255,7 @@ func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntityS
 	}
 
 	// Encrypt key from "From" system under same attribute set in "To" system
-	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrecomputeEncryption(to.Params, attrs), key.Marshal())
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrepareAttributeSet(to.Params, attrs), key.Marshal())
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +287,7 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 	}
 
 	// Encrypt key from "From" system under same attribute set in "To" system
-	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrecomputeEncryption(to.Params, attrs), key.Key.Marshal())
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrepareAttributeSet(to.Params, attrs), key.Key.Marshal())
 	if err != nil {
 		return nil, err
 	}
@@ -307,11 +307,11 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 // ResolveChain resolves a chain of broadening delegations, the first of which
 // contains a key. In other words, it performs permission inheritance.
 func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegation, to *EntitySecret) *DecryptionKey {
-	key := oaque.DecryptionKeyFromMaster(to.Descriptor.Params, to.Key, make(oaque.AttributeList))
+	key := oaque.NonDelegableKeyFromMaster(to.Descriptor.Params, to.Key, make(oaque.AttributeList))
 	for i := len(rest) - 1; i >= 0; i-- {
 		delegation := rest[i]
 		perm := delegation.Delegation.Key.Permissions
-		subkey := oaque.DecryptionKey(delegation.To.Params, key, perm.AttributeSet())
+		subkey := oaque.NonDelegableKey(delegation.To.Params, key, perm.AttributeSet())
 		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey)
 		if !ok {
 			return nil
@@ -323,7 +323,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	}
 
 	perm := first.Key.Key.Permissions
-	subkey := oaque.DecryptionKey(first.To.Params, key, perm.AttributeSet())
+	subkey := oaque.NonDelegableKey(first.To.Params, key, perm.AttributeSet())
 	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey)
 	if !ok {
 		return nil
@@ -364,7 +364,7 @@ func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission) *Encryptor {
 	return &Encryptor{
 		Hierarchy:   hd,
 		Permissions: perm,
-		Precomputed: oaque.PrecomputeEncryption(hd.Params, attrs),
+		Precomputed: oaque.PrepareAttributeSet(hd.Params, attrs),
 	}
 }
 
@@ -417,7 +417,7 @@ func DecryptSymmetricKey(c *EncryptedSymmetricKey, key *DecryptionKey, symm []by
 // encrypted with exactly the set of permissions provided as the first argument.
 func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
 	attrs := perm.AttributeSet()
-	childKey := oaque.DecryptionKey(key.Hierarchy.Params, key.Key, attrs)
+	childKey := oaque.NonDelegableKey(key.Hierarchy.Params, key.Key, attrs)
 	return (*Decryptor)(childKey)
 }
 

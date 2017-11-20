@@ -3,6 +3,7 @@
 package oaque
 
 import (
+	"bytes"
 	"crypto/rand"
 	"io"
 	"math/big"
@@ -24,6 +25,12 @@ type Params struct {
 	Pairing atomic.Value
 	// If the pairing is unset, it will be set while holding this mutex
 	PairingMutex sync.Mutex
+}
+
+// SignatureParams represents additional system parameters for OAQUE signatures.
+type SignatureParams struct {
+	U0 *bn256.G1
+	U1 *bn256.G1
 }
 
 // MasterKey represents the key for a hierarchy that can create a key for any
@@ -61,9 +68,16 @@ type Ciphertext struct {
 	C *bn256.G1
 }
 
-// PartialEncryption represents an attribute set that has been "prepared" for
-// fast encryption in a particular OAQUE system.
-type PartialEncryption bn256.G1
+// Signature represents a signature over an integer in Zp.
+type Signature struct {
+	S1 *bn256.G1
+	S2 *bn256.G2
+	S3 *bn256.G2
+}
+
+// PreparedAttributeList represents an attribute set that has been "prepared"
+// for fast encryption or fast verification in a particular OAQUE system.
+type PreparedAttributeList bn256.G1
 
 // FreeAttributes returns the indexes of unbound attributes.
 func (privkey *PrivateKey) FreeAttributes() []AttributeIndex {
@@ -78,7 +92,7 @@ func (privkey *PrivateKey) FreeAttributes() []AttributeIndex {
 // adversary. The parameter "l" is the total number of attributes supported
 // (indexed from 1 to l-1).
 func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
-	params := &Params{}
+	params := new(Params)
 	var err error
 
 	// The algorithm technically needs g to be a generator of G, but since G is
@@ -121,6 +135,25 @@ func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
 	master := new(bn256.G1).ScalarMult(params.G2, alpha)
 
 	return params, master, nil
+}
+
+// SignatureSetup generates the additional system parameters needed to support
+// OAQUE signatures.
+func SignatureSetup(random io.Reader) (*SignatureParams, error) {
+	params := new(SignatureParams)
+	var err error
+
+	_, params.U0, err = bn256.RandomG1(random)
+	if err != nil {
+		return nil, err
+	}
+
+	_, params.U1, err = bn256.RandomG1(random)
+	if err != nil {
+		return nil, err
+	}
+
+	return params, nil
 }
 
 // RandomInZp returns an element chosen from Zp uniformly at random, using the
@@ -172,10 +205,11 @@ func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (
 	return key, nil
 }
 
-// DecryptionKeyFromMaster is like KeyGen, except that the resulting key should
-// only be used for decryption. It should _not_ be delegated to another entity,
-// as it is not properly re-randomized and could leak the master key.
-func DecryptionKeyFromMaster(params *Params, master MasterKey, attrs AttributeList) *PrivateKey {
+// NonDelegableKeyFromMaster is like KeyGen, except that the resulting key should
+// only be used for decryption or signing. This is significantly faster than
+// the regular KeyGen. However, the output should _not_ be delegated to another
+// entity, as it is not properly re-randomized and could leak the master key.
+func NonDelegableKeyFromMaster(params *Params, master MasterKey, attrs AttributeList) *PrivateKey {
 	key := &PrivateKey{}
 	k := len(attrs)
 	l := len(params.H)
@@ -202,11 +236,12 @@ func DecryptionKeyFromMaster(params *Params, master MasterKey, attrs AttributeLi
 	return key
 }
 
-// DecryptionKey is like QualifyKey, except that the resulting key should only
-// be used for decryption. It should _not_ be delegated to another entity, as it
-// it is not properly re-randomized and could leak information about the parent
-// key.
-func DecryptionKey(params *Params, qualify *PrivateKey, attrs AttributeList) *PrivateKey {
+// NonDelegableKey is like QualifyKey, except that the resulting key should only
+// be used for decryption or signing. This is significantly faster than the
+// QualifyKey function. However, the output should _not_ be delegated to another
+// entity, as it is not properly re-randomized and could leak information about
+// the parent key.
+func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *PrivateKey {
 	k := len(attrs)
 	l := len(params.H)
 	key := &PrivateKey{
@@ -312,27 +347,27 @@ func (params *Params) Precache() {
 // an integer chosen uniformly at random from Zp. If nil, "s" will be generated
 // from crypto/rand
 func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT) (*Ciphertext, error) {
-	return EncryptPrecomputed(s, params, PrecomputeEncryption(params, attrs), message)
+	return EncryptPrecomputed(s, params, PrepareAttributeSet(params, attrs), message)
 }
 
-// PrecomputeEncryption performs precomputation for the provided attribute list,
-// to speed up future encryption with that attribute list. The returned
-// precomputed result can be safely reused multiple times. This can be useful
-// if you are repeatedly encrypting with the same attribute list and want to
-// speed things up.
-func PrecomputeEncryption(params *Params, attrs AttributeList) *PartialEncryption {
+// PrecomputeAttributeSet performs precomputation for the provided attribute
+// list, to speed up future encryption or verification. with that attribute list.
+// The returned precomputed result can be safely reused multiple times. This can
+// be useful if you are repeatedly encrypting messages or verifying signatures
+// with the same attribute list and want to speed things up.
+func PrepareAttributeSet(params *Params, attrs AttributeList) *PreparedAttributeList {
 	c := new(bn256.G1).Set(params.G3)
 	for attrIndex, attr := range attrs {
 		h := new(bn256.G1).ScalarMult(params.H[attrIndex], attr)
 		c.Add(c, h)
 	}
-	return (*PartialEncryption)(c)
+	return (*PreparedAttributeList)(c)
 }
 
 // EncryptPrecomputed encrypts the provided message, using the provided
 // precomputation to speed up the process.
-func EncryptPrecomputed(s *big.Int, params *Params, precomputed *PartialEncryption, message *bn256.GT) (*Ciphertext, error) {
-	ciphertext := &Ciphertext{}
+func EncryptPrecomputed(s *big.Int, params *Params, precomputed *PreparedAttributeList, message *bn256.GT) (*Ciphertext, error) {
+	ciphertext := new(Ciphertext)
 
 	// Randomly choose s in Zp
 	if s == nil {
@@ -365,4 +400,56 @@ func Decrypt(key *PrivateKey, ciphertext *Ciphertext) *bn256.GT {
 	plaintext.Add(plaintext, denominator.Neg(denominator))
 	plaintext.Add(ciphertext.A, plaintext)
 	return plaintext
+}
+
+// Sign produces a signature for the provided message hash, using the provided
+// private key.
+func Sign(s *big.Int, params *Params, sigparams *SignatureParams, key *PrivateKey, message *big.Int) (*Signature, error) {
+	signature := new(Signature)
+
+	// Randomly choose s in Zp
+	if s == nil {
+		var err error
+		s, err = RandomInZp(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	signature.S1 = new(bn256.G1).ScalarMult(sigparams.U1, message)
+	signature.S1.Add(signature.S1, sigparams.U0)
+	signature.S1.ScalarMult(signature.S1, s)
+	signature.S1.Add(key.A0, signature.S1)
+
+	signature.S2 = key.A1
+
+	signature.S3 = new(bn256.G2).ScalarMult(params.G, s)
+
+	return signature, nil
+}
+
+// Verify verifies that the provided signature was produced using an OAQUE
+// private key corresponding to the provided attribute set.
+func Verify(params *Params, sigparams *SignatureParams, attrs AttributeList, signature *Signature, message *big.Int) bool {
+	return VerifyPrecomputed(params, sigparams, PrepareAttributeSet(params, attrs), signature, message)
+}
+
+// VerifyPrecomputed verifies the provided signature, using the provided
+// precomputation to speed up the process.
+func VerifyPrecomputed(params *Params, sigparams *SignatureParams, precomputed *PreparedAttributeList, signature *Signature, message *big.Int) bool {
+	lhs := bn256.Pair(signature.S1, params.G)
+
+	params.Precache()
+	pairing := params.Pairing.Load().(*bn256.GT)
+
+	rhs2 := bn256.Pair((*bn256.G1)(precomputed), signature.S2)
+
+	mrep := new(bn256.G1).ScalarMult(sigparams.U1, message)
+	mrep.Add(sigparams.U0, mrep)
+	rhs3 := bn256.Pair(mrep, signature.S3)
+
+	rhs2.Add(pairing, rhs2)
+	rhs2.Add(rhs2, rhs3)
+
+	return bytes.Equal(lhs.Marshal(), rhs2.Marshal())
 }
