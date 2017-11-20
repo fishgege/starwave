@@ -36,7 +36,6 @@ func (params *Params) Marshal() []byte {
 
 // Unmarshal recovers the parameters from an encoded byte slice.
 func (params *Params) Unmarshal(marshalled []byte) (*Params, bool) {
-
 	if params.Pairing.Load() != nil {
 		panic("Don't re-use a params object")
 	}
@@ -76,6 +75,35 @@ func (params *Params) Unmarshal(marshalled []byte) (*Params, bool) {
 	}
 
 	return params, true
+}
+
+// Marshal encodes the signature parameters as a byte slice.
+func (sigparams *SignatureParams) Marshal() []byte {
+	marshalled := make([]byte, 2<<geShift)
+
+	copy(geIndex(marshalled, 0, 1), sigparams.U0.Marshal())
+	copy(geIndex(marshalled, 1, 1), sigparams.U1.Marshal())
+
+	return marshalled
+}
+
+// Unmarshal recovers the signature parameters from an encoded byte slice.
+func (sigparams *SignatureParams) Unmarshal(marshalled []byte) (*SignatureParams, bool) {
+	if len(marshalled) != 2<<geShift {
+		return nil, false
+	}
+
+	sigparams.U0 = new(bn256.G1)
+	if _, ok := sigparams.U0.Unmarshal(geIndex(marshalled, 0, 1)); !ok {
+		return nil, false
+	}
+
+	sigparams.U1 = new(bn256.G1)
+	if _, ok := sigparams.U1.Unmarshal(geIndex(marshalled, 1, 1)); !ok {
+		return nil, false
+	}
+
+	return sigparams, true
 }
 
 // Marshal encodes the private key as a byte slice.
@@ -136,7 +164,7 @@ func (key *PrivateKey) Unmarshal(marshalled []byte) (*PrivateKey, bool) {
 	return key, true
 }
 
-// Marshal encodes the ciphertext as a byte slice.
+// Marshal encodes a ciphertext as a byte slice.
 func (ciphertext *Ciphertext) Marshal() []byte {
 	marshalled := make([]byte, 9<<geShift)
 
@@ -167,4 +195,39 @@ func (ciphertext *Ciphertext) Unmarshal(marshalled []byte) (*Ciphertext, bool) {
 	}
 
 	return ciphertext, true
+}
+
+// Marshal encodes a signature as a byte slice.
+func (signature *Signature) Marshal() []byte {
+	marshalled := make([]byte, 5<<geShift)
+
+	copy(geIndex(marshalled, 0, 1), signature.S1.Marshal())
+	copy(geIndex(marshalled, 1, 2), signature.S2.Marshal())
+	copy(geIndex(marshalled, 3, 2), signature.S3.Marshal())
+
+	return marshalled
+}
+
+// Unmarshal recovers the signature from an encoded byte slice.
+func (signature *Signature) Unmarshal(marshalled []byte) (*Signature, bool) {
+	if len(marshalled) != 5<<geShift {
+		return nil, false
+	}
+
+	signature.S1 = new(bn256.G1)
+	if _, ok := signature.S1.Unmarshal(geIndex(marshalled, 0, 1)); !ok {
+		return nil, false
+	}
+
+	signature.S2 = new(bn256.G2)
+	if _, ok := signature.S2.Unmarshal(geIndex(marshalled, 1, 2)); !ok {
+		return nil, false
+	}
+
+	signature.S3 = new(bn256.G2)
+	if _, ok := signature.S3.Unmarshal(geIndex(marshalled, 3, 2)); !ok {
+		return nil, false
+	}
+
+	return signature, true
 }
