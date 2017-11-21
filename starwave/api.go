@@ -249,7 +249,7 @@ func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntityS
 		return nil, err
 	}
 
-	key, err := oaque.KeyGen(s, hd.Params, from.Key, attrs)
+	key, err := oaque.KeyGen(s, from.Descriptor.Params, from.Key, attrs)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 		return nil, err
 	}
 
-	// Encrypt key from "From" system under same attribute set in "To" system
+	// Encrypt the decryption key under same attribute set in "To" system
 	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrepareAttributeSet(to.Params, attrs), key.Key.Marshal())
 	if err != nil {
 		return nil, err
@@ -300,7 +300,8 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 			},
 			Message: encryptedMessage,
 		},
-		To: to,
+		To:        to,
+		Hierarchy: from.Hierarchy,
 	}, nil
 }
 
@@ -311,7 +312,9 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	for i := len(rest) - 1; i >= 0; i-- {
 		delegation := rest[i]
 		perm := delegation.Delegation.Key.Permissions
-		subkey := oaque.NonDelegableKey(delegation.To.Params, key, perm.AttributeSet())
+		attrs := perm.AttributeSet()
+		attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
+		subkey := oaque.NonDelegableKey(delegation.To.Params, key, attrs)
 		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey)
 		if !ok {
 			return nil
@@ -323,7 +326,9 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	}
 
 	perm := first.Key.Key.Permissions
-	subkey := oaque.NonDelegableKey(first.To.Params, key, perm.AttributeSet())
+	attrs := perm.AttributeSet()
+	attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
+	subkey := oaque.NonDelegableKey(first.To.Params, key, attrs)
 	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey)
 	if !ok {
 		return nil
