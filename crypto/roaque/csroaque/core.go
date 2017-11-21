@@ -154,7 +154,9 @@ func treeKeyGen(pNode *paramsNode, mNode *masterKeyNode, left int, right int, lE
 // and newUser is number of privateKey which namespace wants to generate.
 
 func KeyGen(params *Params, master *MasterKey, attrs oaque.AttributeList, userNum int, newUser int) (*PrivateKey, error) {
-	// newUser should be greater than 0
+	if newUser <= 0 || userNum < 0 || userNum+newUser > *params.userSize {
+		panic("Parameters for KeyGen are out of bound")
+	}
 	key := &PrivateKey{}
 	lEnd, rEnd := userNum+1, userNum+newUser
 	var err error
@@ -215,8 +217,12 @@ func treeQualifyKey(pNode *paramsNode, qNode *privateKeyNode, left int, right in
 // restricts the permissions. Furthermore, attributes are immutable once set,
 // so the attrs map must contain mappings for attributes that are already set.
 // The attrs argument is a mapping from attribute to its value; attributes
-// not in the map are not set. lEnd and rEnd specify the UserID range to be delegated
+// not in the map are not set. lEnd and rEnd specify the leafID range to be delegated
 func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, lEnd int, rEnd int) (*PrivateKey, error) {
+	if !(*qualify.lEnd <= lEnd && rEnd <= *qualify.rEnd) {
+		panic("Cannot generate key out bound of given key")
+	}
+
 	key := &PrivateKey{}
 	var err error
 
@@ -287,9 +293,11 @@ func treeEncrypt(pNode *paramsNode, left int, right int, attrs oaque.AttributeLi
 // No function for revocation, since this is a stateless revocation scheme. User
 // only need to specify revocation list along with URI during encryption.
 
-// Encrypt converts the provided message to ciphertext, using the provided ID
-// as the public key.
+// Encrypt first find a node set which cover all the unrevoked leaves, and then
+// encrypts message under those nodes' keys. The set covering algorithm used here
+// is Complete Tree(CS)
 func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) (CiphertextList, error) {
+	//TODO empty revoc
 	var ciphertext CiphertextList
 	var err error
 	ciphertext, err = treeEncrypt(params.root, 1, *params.userSize, attrs, revoc, message)
