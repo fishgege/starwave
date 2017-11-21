@@ -125,7 +125,12 @@ func TestBroadeningDelegation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prefixperm, err := ParsePermissionFromPath([]string{"a", "b", "*"}, []uint16{2017, 12})
+	prefix1perm, err := ParsePermissionFromPath([]string{"a", "*"}, []uint16{2017, 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix2perm, err := ParsePermissionFromPath([]string{"a", "b", "*"}, []uint16{2017, 12})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,20 +140,26 @@ func TestBroadeningDelegation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	intermediate, isecret := createEntityHelper(t, "Intermediate")
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	d1, err := DelegateBroadeningWithKey(rand.Reader, master, intermediate, perm)
+	d1, err := DelegateBroadeningWithKey(rand.Reader, master, intermediate1, perm)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	d2, err := DelegateBroadening(rand.Reader, hierarchy, isecret, reader, prefixperm)
+	d2, err := DelegateBroadening(rand.Reader, hierarchy, i1secret, intermediate2, prefix2perm)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	key := ResolveChain(d1, []*BroadeningDelegation{d2}, rsecret)
+	d3, err := DelegateBroadening(rand.Reader, hierarchy, i2secret, reader, prefix1perm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := ResolveChain(d1, []*BroadeningDelegation{d2, d3}, rsecret)
 	if key == nil {
 		t.Fatal("Could not resolve chain of delegations")
 	}
