@@ -181,6 +181,52 @@ func BenchmarkZpInverse(b *testing.B) {
 	}
 }
 
+func BenchmarkZpAdd(b *testing.B) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		r, err := rand.Int(rand.Reader, bn256.Order)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		s, err := rand.Int(rand.Reader, bn256.Order)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		t := new(big.Int)
+
+		b.StartTimer()
+		t.Add(r, s)
+		b.StopTimer()
+	}
+}
+
+func BenchmarkZpShift(b *testing.B) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		r, err := rand.Int(rand.Reader, bn256.Order)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		s, err := rand.Int(rand.Reader, big.NewInt(64))
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		var suint uint = uint(s.Uint64())
+
+		t := new(big.Int)
+
+		b.StartTimer()
+		t.Rsh(r, suint)
+		b.StopTimer()
+	}
+}
+
 func BenchmarkZpMul(b *testing.B) {
 	b.StopTimer()
 

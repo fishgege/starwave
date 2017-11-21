@@ -16,8 +16,8 @@ func HybridEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.Pr
 	}
 
 	var nonce [24]byte
-	output := make([]byte, len(message)+secretbox.Overhead)
-	secretbox.Seal(output, message, &nonce, &key)
+	buffer := make([]byte, 0, len(message)+secretbox.Overhead)
+	output := secretbox.Seal(buffer, message, &nonce, &key)
 
 	return encryptedKey, output, nil
 }
@@ -36,8 +36,8 @@ func HybridDecrypt(encryptedKey *oaque.Ciphertext, encryptedMessage []byte, key 
 	DecryptSymmetricKey(key, encryptedKey, sk[:])
 
 	var nonce [24]byte
-	output := make([]byte, len(encryptedMessage)-secretbox.Overhead)
-	return secretbox.Open(output, encryptedMessage, &nonce, &sk)
+	buffer := make([]byte, 0, len(encryptedMessage)-secretbox.Overhead)
+	return secretbox.Open(buffer, encryptedMessage, &nonce, &sk)
 }
 
 func DecryptSymmetricKey(key *oaque.PrivateKey, encryptedKey *oaque.Ciphertext, symm []byte) []byte {
