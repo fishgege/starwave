@@ -72,8 +72,8 @@ func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 	return params, masterKey, nil
 }
 
-func leafIndex(params *Params, index int) int {
-	return index + *params.userSize - 1
+func leafIndex(userSize int, index int) int {
+	return index + userSize - 1
 }
 
 func getIndex(index int, maxSize int) []int {
@@ -99,6 +99,7 @@ func newAttributeList(params *Params, vi int, vk int, attrs oaque.AttributeList)
 
 	//TODO: Add hash function here or inside oaque
 	newAttr[oaque.AttributeIndex(0)] = big.NewInt(int64(vi))
+
 	vkList := getIndex(vk, *params.height)
 	for i := 1; i < len(vkList); i++ {
 		newAttr[oaque.AttributeIndex(i)] = big.NewInt(int64(vkList[i]))
@@ -159,7 +160,7 @@ func KeyGen(params *Params, master *MasterKey, attrs oaque.AttributeList, userNu
 	key.setKey = make([]*privateKeyNode, newUser, newUser)
 	for i := lEnd; i <= rEnd; i++ {
 		id := i - lEnd
-		key.setKey[id], err = treeKeyGen(params, master, attrs, leafIndex(params, i))
+		key.setKey[id], err = treeKeyGen(params, master, attrs, leafIndex(*params.userSize, i))
 		if err != nil {
 			return nil, err
 		}
@@ -232,6 +233,11 @@ func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, 
 				return nil, err
 			}
 		}
+	}
+
+	key.attrs = make(oaque.AttributeList)
+	for index := range attrs {
+		key.attrs[index] = attrs[index]
 	}
 
 	return key, nil
@@ -328,15 +334,37 @@ func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, me
 		if revoc[i] <= 0 {
 			panic("revoked id cannot be less than or equal to zero")
 		}
-		for index := leafIndex(params, revoc[i]); index != 0; index >>= 1 {
+		for index := leafIndex(*params.userSize, revoc[i]); index != 0; index >>= 1 {
 			revocNode[index] = true
 		}
 	}
 
 	ciphertext, err = treeEncrypt(params, attrs, revocNode, message, len(revoc))
-
 	if err != nil {
 		return nil, err
+	}
+
+	min, max := *params.userSize+1, 0
+	for i := range revoc {
+		if revoc[i] < min {
+			min = revoc[i]
+		}
+		if max < revoc[i] {
+			max = revoc[i]
+		}
+	}
+
+	for min, max = leafIndex(*params.userSize, min), leafIndex(*params.userSize, max); min != max; {
+		min >>= 1
+		max >>= 1
+	}
+
+	if min != 1 {
+		tmpCipher, err := newCipher(params, 1, min, attrs, message)
+		if err != nil {
+			return nil, err
+		}
+		ciphertext = append(ciphertext, tmpCipher)
 	}
 
 	return ciphertext, nil
@@ -368,6 +396,7 @@ func treeDecrypt(params *Params, pNode *privateKeyNode, cipher *Ciphertext, inde
 
 				if pNode.right[j] != *cipher.right {
 					tmpAttrs = newAttributeList(params, *cipher.left, *cipher.right, attrs)
+
 					tmpKey, err = oaque.QualifyKey(nil, params.params, pNode.privateKey[j], tmpAttrs)
 					if err != nil {
 						return nil, err
@@ -391,7 +420,7 @@ func Decrypt(params *Params, key *PrivateKey, ciphertext CiphertextList) *bn256.
 
 	for i := 0; i < len(ciphertext); i++ {
 		for j := *key.lEnd; j <= *key.rEnd; j++ {
-			plaintext, err = treeDecrypt(params, key.setKey[j-*key.lEnd], ciphertext[i], leafIndex(params, j), key.attrs)
+			plaintext, err = treeDecrypt(params, key.setKey[j-*key.lEnd], ciphertext[i], leafIndex(*params.userSize, j), key.attrs)
 			if err != nil {
 				panic("Cannot qualify key during decryption")
 			}

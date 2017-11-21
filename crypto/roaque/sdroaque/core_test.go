@@ -115,3 +115,58 @@ func TestQualifyKey(t *testing.T) {
 	decryptAndCheckHelper(t, params, key2, ciphertext, message)
 	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
 }
+
+func TestQualifyKey2(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
+	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+
+	revoc1 := RevocationList{1, 2, 3, 7, 8}
+	revoc2 := RevocationList{1, 2, 3, 7, 8, 9}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, revoc1, message)
+	ciphertext2 := encryptHelper(t, params, attrs2, revoc2, message)
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 9)
+	key2 := qualifyHelper(t, params, key1, attrs2, 7, 9)
+
+	//	decryptAndCheckHelper(t, params, key1, ciphertext, message)
+	decryptAndCheckHelper(t, params, key2, ciphertext, message)
+	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
+}
+
+func TestQualifyKey3(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
+	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+
+	revoc1 := RevocationList{1, 5}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, revoc1, message)
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 9)
+	key2 := qualifyHelper(t, params, key1, attrs2, 8, 8)
+
+	//	decryptAndCheckHelper(t, params, key1, ciphertext, message)
+	decryptAndCheckHelper(t, params, key2, ciphertext, message)
+}
