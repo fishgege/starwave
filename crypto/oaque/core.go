@@ -35,7 +35,7 @@ type SignatureParams struct {
 
 // MasterKey represents the key for a hierarchy that can create a key for any
 // element.
-type MasterKey *bn256.G1
+type MasterKey bn256.G1
 
 // AttributeIndex represents an attribute --- specifically, its index in the
 // array of attributes.
@@ -91,7 +91,7 @@ func (privkey *PrivateKey) FreeAttributes() []AttributeIndex {
 // Setup generates the system parameters, which may be made visible to an
 // adversary. The parameter "l" is the total number of attributes supported
 // (indexed from 1 to l-1).
-func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
+func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
 	params := new(Params)
 	var err error
 
@@ -134,7 +134,7 @@ func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
 	// Compute the master key as g2 ^ alpha.
 	master := new(bn256.G1).ScalarMult(params.G2, alpha)
 
-	return params, master, nil
+	return params, (*MasterKey)(master), nil
 }
 
 // SignatureSetup generates the additional system parameters needed to support
@@ -168,7 +168,7 @@ func RandomInZp(random io.Reader) (*big.Int, error) {
 // be chosen uniformly at random, and represents the randomness to use to
 // generate the key. If left as nil, it will be generated using a cryptographic
 // random number generator.
-func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (*PrivateKey, error) {
+func KeyGen(r *big.Int, params *Params, master *MasterKey, attrs AttributeList) (*PrivateKey, error) {
 	key := &PrivateKey{}
 	k := len(attrs)
 	l := len(params.H)
@@ -199,7 +199,7 @@ func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (
 	}
 	product.ScalarMult(product, r)
 
-	key.A0 = new(bn256.G1).Add(master, product)
+	key.A0 = new(bn256.G1).Add((*bn256.G1)(master), product)
 	key.A1 = new(bn256.G2).ScalarMult(params.G, r)
 
 	return key, nil
@@ -209,7 +209,7 @@ func KeyGen(r *big.Int, params *Params, master MasterKey, attrs AttributeList) (
 // only be used for decryption or signing. This is significantly faster than
 // the regular KeyGen. However, the output should _not_ be delegated to another
 // entity, as it is not properly re-randomized and could leak the master key.
-func NonDelegableKeyFromMaster(params *Params, master MasterKey, attrs AttributeList) *PrivateKey {
+func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs AttributeList) *PrivateKey {
 	key := &PrivateKey{}
 	k := len(attrs)
 	l := len(params.H)
@@ -230,7 +230,7 @@ func NonDelegableKeyFromMaster(params *Params, master MasterKey, attrs Attribute
 		}
 	}
 
-	key.A0 = new(bn256.G1).Add(master, product)
+	key.A0 = new(bn256.G1).Add((*bn256.G1)(master), product)
 	key.A1 = new(bn256.G2).Set(params.G)
 
 	return key

@@ -273,3 +273,77 @@ func JoinIDs(first ID, second ID) ID {
 	combined = append(combined, second...)
 	return combined
 }
+
+// URIToBytes marshals a URIPath into a string of bytes.
+func URIToBytes(up URIPath) []byte {
+	length := 0
+	for _, component := range up {
+		length += len(component)
+	}
+
+	buf := make([]byte, 1+length+len(up))
+	buf[0] = byte(len(up))
+	start := 1
+	for _, component := range up {
+		rep := component
+		copy(buf[start:], rep)
+		buf[start+len(rep)] = 255
+		start += len(rep) + 1
+	}
+	return buf
+}
+
+// TimeToBytes marshals a TimePath into a string of bytes.
+func TimeToBytes(tp TimePath) []byte {
+	length := 0
+	for _, component := range tp {
+		length += len(component)
+	}
+
+	buf := make([]byte, 1+length+len(tp))
+	buf[0] = byte(len(tp))
+	start := 1
+	for _, component := range tp {
+		rep := component
+		copy(buf[start:], rep)
+		buf[start+len(rep)] = 255
+		start += len(rep) + 1
+	}
+	return buf
+}
+
+// URIFromBytes unmarshals a URIPath from a string of bytes marshalled with
+// IDToBytes.
+func URIFromBytes(marshalled []byte) URIPath {
+	num := marshalled[0]
+	up := make(URIPath, num)
+
+	compidx := 0
+	start := 1
+	for i := 1; i != len(marshalled); i++ {
+		if marshalled[i] == 255 {
+			up[compidx] = marshalled[start:i]
+			start = i + 1
+			compidx++
+		}
+	}
+	return up
+}
+
+// TimeFromBytes unmarshals a TimePath from a string of bytes marshalled with
+// IDToBytes.
+func TimeFromBytes(marshalled []byte) TimePath {
+	num := marshalled[0]
+	tp := make(TimePath, num)
+
+	compidx := 0
+	start := 1
+	for i := 1; i != len(marshalled); i++ {
+		if marshalled[i] == 255 {
+			tp[compidx] = marshalled[start:i]
+			start = i + 1
+			compidx++
+		}
+	}
+	return tp
+}

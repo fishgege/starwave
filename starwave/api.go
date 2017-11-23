@@ -88,7 +88,7 @@ type EntityDescriptor struct {
 
 // EntitySecret represents the secret information that an entity possesses.
 type EntitySecret struct {
-	Key        oaque.MasterKey
+	Key        *oaque.MasterKey
 	Descriptor *EntityDescriptor
 }
 
@@ -319,7 +319,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 		if !ok {
 			return nil
 		}
-		key, ok = key.Unmarshal(nextKeyBytes)
+		ok = key.Unmarshal(nextKeyBytes)
 		if !ok {
 			return nil
 		}
@@ -333,7 +333,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	if !ok {
 		return nil
 	}
-	key, ok = key.Unmarshal(finalKeyBytes)
+	ok = key.Unmarshal(finalKeyBytes)
 	if !ok {
 		return nil
 	}

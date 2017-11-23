@@ -37,7 +37,7 @@ func verifyHelper(t *testing.T, params *Params, sigparams *SignatureParams, attr
 	}
 }
 
-func genFromMasterHelper(t *testing.T, params *Params, masterkey MasterKey, attrs AttributeList) *PrivateKey {
+func genFromMasterHelper(t *testing.T, params *Params, masterkey *MasterKey, attrs AttributeList) *PrivateKey {
 	// Generate key for the single attributes
 	key, err := KeyGen(nil, params, masterkey, attrs)
 	if err != nil {

@@ -18,7 +18,7 @@ func TestEncryptionMarshalling(t *testing.T) {
 
 	parambytes := params.Marshal()
 	params = new(Params)
-	_, ok := params.Unmarshal(parambytes)
+	ok := params.Unmarshal(parambytes)
 	if !ok {
 		t.Fatal("Could not unmarshal Params")
 	}
@@ -34,7 +34,7 @@ func TestEncryptionMarshalling(t *testing.T) {
 
 	ciphertextbytes := ciphertext.Marshal()
 	ciphertext = new(Ciphertext)
-	_, ok = ciphertext.Unmarshal(ciphertextbytes)
+	ok = ciphertext.Unmarshal(ciphertextbytes)
 	if !ok {
 		t.Fatal("Could not unmarshal Ciphertext")
 	}
@@ -46,7 +46,7 @@ func TestEncryptionMarshalling(t *testing.T) {
 
 	privkeybytes := privkey.Marshal()
 	privkey = new(PrivateKey)
-	_, ok = privkey.Unmarshal(privkeybytes)
+	ok = privkey.Unmarshal(privkeybytes)
 	if !ok {
 		t.Fatal("Could not unmarshal private key")
 	}
@@ -73,14 +73,14 @@ func TestSignatureMarshalling(t *testing.T) {
 
 	parambytes := params.Marshal()
 	params = new(Params)
-	_, ok := params.Unmarshal(parambytes)
+	ok := params.Unmarshal(parambytes)
 	if !ok {
 		t.Fatal("Could not unmarshal Params")
 	}
 
 	sigparambytes := sigparams.Marshal()
 	sigparams = new(SignatureParams)
-	_, ok = sigparams.Unmarshal(sigparambytes)
+	ok = sigparams.Unmarshal(sigparambytes)
 	if !ok {
 		t.Fatal("Could not unmarshal SignatureParams")
 	}
@@ -98,7 +98,7 @@ func TestSignatureMarshalling(t *testing.T) {
 
 	privkeybytes := privkey.Marshal()
 	privkey = new(PrivateKey)
-	_, ok = privkey.Unmarshal(privkeybytes)
+	ok = privkey.Unmarshal(privkeybytes)
 	if !ok {
 		t.Fatal("Could not unmarshal private key")
 	}
@@ -111,7 +111,7 @@ func TestSignatureMarshalling(t *testing.T) {
 
 	signaturebytes := signature.Marshal()
 	signature = new(Signature)
-	_, ok = signature.Unmarshal(signaturebytes)
+	ok = signature.Unmarshal(signaturebytes)
 	if !ok {
 		t.Fatal("Could not unmarshal Signature")
 	}
