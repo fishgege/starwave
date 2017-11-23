@@ -19,10 +19,9 @@ type Params struct {
 }
 
 type masterKeyNode struct {
-	left  *masterKeyNode
-	right *masterKeyNode
-	// Note: In OAQUE core.go, MaterKey is defined as an pointer
-	masterKey oaque.MasterKey
+	left      *masterKeyNode
+	right     *masterKeyNode
+	masterKey *oaque.MasterKey
 }
 
 //	This should be out of band, and managed by namespace

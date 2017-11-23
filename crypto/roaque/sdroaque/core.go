@@ -20,8 +20,7 @@ type Params struct {
 //	userNumber *int
 
 type MasterKey struct {
-	// Note: In OAQUE core.go, MaterKey is defined as an pointer
-	masterKey oaque.MasterKey
+	masterKey *oaque.MasterKey
 }
 
 // Key[i] for sets S_{left[i],right[i]}.
