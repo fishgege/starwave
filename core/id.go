@@ -300,14 +300,17 @@ func TimeToBytes(tp TimePath) []byte {
 		length += len(component)
 	}
 
-	buf := make([]byte, 1+length+len(tp))
+	bytelen := 2*length + 1
+	if length == 0 {
+		bytelen--
+	}
+
+	buf := make([]byte, 1+bytelen)
 	buf[0] = byte(len(tp))
 	start := 1
 	for _, component := range tp {
-		rep := component
-		copy(buf[start:], rep)
-		buf[start+len(rep)] = 255
-		start += len(rep) + 1
+		copy(buf[start:start+3], component)
+		start += 3
 	}
 	return buf
 }
@@ -336,14 +339,11 @@ func TimeFromBytes(marshalled []byte) TimePath {
 	num := marshalled[0]
 	tp := make(TimePath, num)
 
-	compidx := 0
 	start := 1
-	for i := 1; i != len(marshalled); i++ {
-		if marshalled[i] == 255 {
-			tp[compidx] = marshalled[start:i]
-			start = i + 1
-			compidx++
-		}
+	for idx := range tp {
+		tp[idx] = marshalled[start : start+3]
+		start += 3
 	}
+
 	return tp
 }
