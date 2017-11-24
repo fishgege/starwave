@@ -21,6 +21,7 @@ const (
 	TypeBroadeningDelegationWithKey
 	TypeEncryptedSymmetricKey
 	TypeEncryptedMessage
+	TypeFullDelegation
 )
 
 func (messageType MessageType) String() string {
@@ -43,6 +44,8 @@ func (messageType MessageType) String() string {
 		return "EncryptedSymmetricKey"
 	case TypeEncryptedMessage:
 		return "EncryptedMessage"
+	case TypeFullDelegation:
+		return "FullDelegation"
 	default:
 		panic(fmt.Sprintf("Unknown message type %d", messageType))
 	}
@@ -64,19 +67,31 @@ func checkMessageType(message []byte, expected MessageType) []byte {
 	return message[1:]
 }
 
+/* Utilities for marshalling array/slice lengths. */
+
 const MarshalledLengthLength = 4
 
 func putLength(buf []byte, length int) {
 	binary.LittleEndian.PutUint32(buf, uint32(length))
 }
-func marshalLength(length int) []byte {
-	buf := make([]byte, MarshalledLengthLength)
-	putLength(buf, length)
-	return buf
-}
+
 func getLength(buf []byte) int {
 	return int(binary.LittleEndian.Uint32(buf))
 }
+
+func MarshalAppendLength(length int, buf []byte) []byte {
+	lenbuf := make([]byte, MarshalledLengthLength)
+	putLength(lenbuf, length)
+	return append(buf, lenbuf...)
+}
+
+func UnmarshalPrefixLength(buf []byte) (int, []byte) {
+	length := getLength(buf[:MarshalledLengthLength])
+	buf = buf[MarshalledLengthLength:]
+	return length, buf
+}
+
+/* Utilities for marshalling more complex structures. */
 
 type Marshallable interface {
 	Marshal() []byte
@@ -85,14 +100,13 @@ type Marshallable interface {
 
 func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
 	marshalled := m.Marshal()
-	buf = append(buf, marshalLength(len(marshalled))...)
+	buf = MarshalAppendLength(len(marshalled), buf)
 	buf = append(buf, marshalled...)
 	return buf
 }
 
 func UnmarshalPrefixWithLength(m Marshallable, buf []byte) []byte {
-	length := getLength(buf[:MarshalledLengthLength])
-	buf = buf[MarshalledLengthLength:]
+	length, buf := UnmarshalPrefixLength(buf)
 	success := m.Unmarshal(buf[:length])
 	if !success {
 		return nil
@@ -382,6 +396,38 @@ func (bdk *BroadeningDelegationWithKey) Unmarshal(marshalled []byte) bool {
 	buf = UnmarshalPrefixWithLength(bdk.Hierarchy, buf)
 	if buf == nil {
 		return false
+	}
+
+	return true
+}
+
+func (fd *FullDelegation) Marshal() []byte {
+	buf := newMessageBuffer(2048+(1024*len(fd.Narrow)), TypeFullDelegation)
+
+	buf = MarshalAppendWithLength(fd.Broad, buf)
+	buf = MarshalAppendLength(len(fd.Narrow), buf)
+	for _, narrowing := range fd.Narrow {
+		buf = MarshalAppendWithLength(narrowing, buf)
+	}
+
+	return buf
+}
+
+func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
+	buf := checkMessageType(marshalled, TypeFullDelegation)
+
+	fd.Broad = new(BroadeningDelegation)
+	buf = UnmarshalPrefixWithLength(fd.Broad, buf)
+
+	numNarrowing, buf := UnmarshalPrefixLength(buf)
+
+	fd.Narrow = make([]*BroadeningDelegationWithKey, numNarrowing)
+	for i := range fd.Narrow {
+		fd.Narrow[i] = new(BroadeningDelegationWithKey)
+		buf = UnmarshalPrefixWithLength(fd.Narrow[i], buf)
+		if buf == nil {
+			return false
+		}
 	}
 
 	return true

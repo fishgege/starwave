@@ -92,24 +92,6 @@ type EntitySecret struct {
 	Descriptor *EntityDescriptor
 }
 
-// BroadeningDelegation represents a delegation of permissions, that allows
-// the grantee to "inherit" keys for narrower permissions obtained by the
-// granter.
-type BroadeningDelegation struct {
-	Delegation *EncryptedMessage
-	From       *EntityDescriptor
-	To         *EntityDescriptor
-}
-
-// BroadeningDelegationWithKey represents the transfer of a key on some
-// permissions, allowing entities with a chain of BroadeningDelegations to the
-// grantee to inherit the transferred key.
-type BroadeningDelegationWithKey struct {
-	Key       *EncryptedMessage
-	To        *EntityDescriptor
-	Hierarchy *HierarchyDescriptor
-}
-
 // EncryptedSymmetricKey represents a symmetric key encrypted using OAQUE. This
 // is a useful primitive for applications that repeatedly publish on the same
 // attribute set, allowing the asymmetric OAQUE-based encryption to be performed
@@ -142,6 +124,31 @@ type Encryptor struct {
 // decryption for a given attribute set. In particular, it caches the generation
 // of the private key for the exact attribute set.
 type Decryptor oaque.PrivateKey
+
+// BroadeningDelegation represents a delegation of permissions, that allows
+// the grantee to "inherit" keys for narrower permissions obtained by the
+// granter.
+type BroadeningDelegation struct {
+	Delegation *EncryptedMessage
+	From       *EntityDescriptor
+	To         *EntityDescriptor
+}
+
+// BroadeningDelegationWithKey represents the transfer of a key on some
+// permissions, allowing entities with a chain of BroadeningDelegations to the
+// grantee to inherit the transferred key.
+type BroadeningDelegationWithKey struct {
+	Key       *EncryptedMessage
+	To        *EntityDescriptor
+	Hierarchy *HierarchyDescriptor
+}
+
+// FullDelegation consists of a broadening delegation, plus some keys that are
+// the result of narrowing delegations.
+type FullDelegation struct {
+	Broad  *BroadeningDelegation
+	Narrow []*BroadeningDelegationWithKey
+}
 
 const (
 	// MaxURIDepth is the maximum depth of a URI in STARWAVE.

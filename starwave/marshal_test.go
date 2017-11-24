@@ -72,6 +72,18 @@ func TestBroadeningDelegationWithMarshalling(t *testing.T) {
 	}
 	remarshalHelper(d3)
 
+	/*
+	 * This isn't how FullDelegation is supposed to be used, but it is good
+	 * enough for testing marshalling.
+	 */
+	fd := &FullDelegation{
+		Broad:  d2,
+		Narrow: []*BroadeningDelegationWithKey{d1, d1},
+	}
+	remarshalHelper(fd)
+	d1 = fd.Narrow[1]
+	d2 = fd.Broad
+
 	key := ResolveChain(d1, []*BroadeningDelegation{d2, d3}, rsecret)
 	if key == nil {
 		t.Fatal("Could not resolve chain of delegations")
