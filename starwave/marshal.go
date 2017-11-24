@@ -22,6 +22,7 @@ const (
 	TypeEncryptedSymmetricKey
 	TypeEncryptedMessage
 	TypeFullDelegation
+	TypeDelegationBundle
 )
 
 func (messageType MessageType) String() string {
@@ -425,6 +426,33 @@ func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
 	for i := range fd.Narrow {
 		fd.Narrow[i] = new(BroadeningDelegationWithKey)
 		buf = UnmarshalPrefixWithLength(fd.Narrow[i], buf)
+		if buf == nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (db *DelegationBundle) Marshal() []byte {
+	buf := newMessageBuffer(4096, TypeDelegationBundle)
+
+	buf = MarshalAppendLength(len(db.Delegations), buf)
+	for _, delegation := range db.Delegations {
+		buf = MarshalAppendWithLength(delegation, buf)
+	}
+
+	return buf
+}
+
+func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
+	buf := checkMessageType(marshalled, TypeDelegationBundle)
+
+	numDelegations, buf := UnmarshalPrefixLength(buf)
+	db.Delegations = make([]*FullDelegation, numDelegations)
+	for i := range db.Delegations {
+		db.Delegations[i] = new(FullDelegation)
+		buf = UnmarshalPrefixWithLength(db.Delegations[i], buf)
 		if buf == nil {
 			return false
 		}

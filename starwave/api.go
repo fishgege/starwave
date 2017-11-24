@@ -74,6 +74,12 @@ func ParsePermissionFromPath(uriPrefix []string, timePrefix []uint16) (*Permissi
 	}, nil
 }
 
+// Contains returns true if this permission also conveys the set of permissions
+// passed as an argument.
+func (p *Permission) Contains(other *Permission) bool {
+	return core.IsURIPrefix(p.URI, other.URI) && core.IsTimePrefix(p.Time, other.Time)
+}
+
 // AttributeSet converts a permission into an attribute list for use with OAQUE.
 func (p *Permission) AttributeSet() oaque.AttributeList {
 	return core.AttributeSetFromPaths(p.URI, p.Time)
@@ -144,10 +150,22 @@ type BroadeningDelegationWithKey struct {
 }
 
 // FullDelegation consists of a broadening delegation, plus some keys that are
-// the result of narrowing delegations.
+// the result of narrowing delegations. A single FullDelegation conveys
+// keys for a single Permission.
 type FullDelegation struct {
 	Broad  *BroadeningDelegation
 	Narrow []*BroadeningDelegationWithKey
+}
+
+func (fd *FullDelegation) Permissions() *Permission {
+	return fd.Broad.Delegation.Key.Permissions
+}
+
+// DelegationBundle is a set of FullDelegations that are serialized together.
+// This is useful for delegations that span multiple units of time. Each
+// individual delegation must be on a disjoint Permission.
+type DelegationBundle struct {
+	Delegations []*FullDelegation
 }
 
 const (
@@ -448,4 +466,159 @@ func (d *Decryptor) Decrypt(c *EncryptedMessage) []byte {
 // process.
 func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte) []byte {
 	return core.DecryptSymmetricKey((*oaque.PrivateKey)(d), c.Ciphertext, symm)
+}
+
+// DeriveKey takes as input a chain of delegations, and tries to derive the key
+// for a Permission.
+func DeriveKey(chain []*DelegationBundle, perm *Permission, me *EntitySecret) *DecryptionKey {
+	// First step: reduce the chain of DelegationBundles into a chain of
+	// FullDelegations. This can be done easily, because the individual
+	// delegations in a delegation bundle are disjoint.
+	delegs := make([]*FullDelegation, len(chain))
+thinchain:
+	for i, bundle := range chain {
+		for _, deleg := range bundle.Delegations {
+			if deleg.Permissions().Contains(perm) {
+				delegs[i] = deleg
+				continue thinchain
+			}
+		}
+		// If we reach this point, then the intersection of permissions is
+		// does not contain the requested permission.
+		return nil
+	}
+
+	var start *BroadeningDelegationWithKey
+	var rest []*BroadeningDelegation
+
+	// Second step: check for the nearest key that can be reached using only
+	// broadening delegations.
+loop:
+	for i := len(delegs) - 1; i >= 0; i-- {
+		deleg := delegs[i]
+		for _, narrow := range deleg.Narrow {
+			nperm := narrow.Key.Key.Permissions
+			if nperm.Contains(perm) {
+				start = narrow
+				rest = make([]*BroadeningDelegation, len(delegs)-(i+1))
+				for j := range rest {
+					rest[j] = delegs[j+(i+1)].Broad
+				}
+				break loop
+			}
+		}
+		// No keys in this delegation that I can access, so go to the previous
+		// delegation. First, we must check if there is a previous delegation.
+		if i == 0 {
+			return nil
+		}
+		// Next, we must check if it's a "broadening" delegation that we can
+		// traverse.
+		if !deleg.Permissions().Contains(delegs[i-1].Permissions()) {
+			// This is not a broadening link, so we have to give up
+			return nil
+		}
+	}
+
+	return ResolveChain(start, rest, me)
+}
+
+func PermissionRange(uri string, timeStart time.Time, timeEnd time.Time) ([]*Permission, error) {
+	uripath, err := core.ParseURI(uri)
+	if err != nil {
+		return nil, err
+	}
+	times, err := core.TimeRange(timeStart, timeEnd)
+	if err != nil {
+		return nil, err
+	}
+	perms := make([]*Permission, len(times))
+	for i, timepath := range times {
+		perms[i] = &Permission{
+			URI:  uripath,
+			Time: timepath,
+		}
+	}
+	return perms, nil
+}
+
+// DelegateFull creates a full delegation, granting a key for broadening, while
+// providing keys that are available right now.
+func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, perm *Permission) (*FullDelegation, error) {
+	fd := new(FullDelegation)
+	var err error
+	fd.Broad, err = DelegateBroadening(random, hd, from, to, perm)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now, of the provided keys, check which ones can provide at least parts of
+	// the specified permissions.
+	for _, key := range keys {
+		kperm := key.Permissions
+		if kperm.Contains(perm) {
+			// We can generate the key exactly.
+			nkey, err := DelegateBroadeningWithKey(random, key, to, perm)
+			if err != nil {
+				return nil, err
+			}
+			fd.Narrow = []*BroadeningDelegationWithKey{nkey}
+			break
+		} else if core.IsURIPrefix(kperm.URI, perm.URI) && core.IsTimePrefix(perm.Time, kperm.Time) {
+			// We can generate a partial key
+			nkey, err := DelegateBroadeningWithKey(random, key, to, &Permission{
+				URI:  perm.URI,
+				Time: kperm.Time,
+			})
+			if err != nil {
+				return nil, err
+			}
+			fd.Narrow = append(fd.Narrow, nkey)
+		} else if core.IsURIPrefix(perm.URI, kperm.URI) && core.IsTimePrefix(kperm.Time, perm.Time) {
+			// We can generate a partial key
+			nkey, err := DelegateBroadeningWithKey(random, key, to, &Permission{
+				URI:  kperm.URI,
+				Time: perm.Time,
+			})
+			if err != nil {
+				return nil, err
+			}
+			fd.Narrow = append(fd.Narrow, nkey)
+		}
+	}
+
+	return fd, nil
+}
+
+func ExtractKeys(db *DelegationBundle, me *EntitySecret) []*DecryptionKey {
+	var res []*DecryptionKey
+	for _, deleg := range db.Delegations {
+		for _, narrow := range deleg.Narrow {
+			key := ResolveChain(narrow, nil, me)
+			if key != nil {
+				res = append(res, key)
+			}
+		}
+	}
+	return res
+}
+
+// DelegateBundle performs multiple full delegations over a resource and time
+// range.
+func DelegateBundle(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, uri string, start time.Time, end time.Time) (*DelegationBundle, error) {
+	perms, err := PermissionRange(uri, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	db := new(DelegationBundle)
+	db.Delegations = make([]*FullDelegation, len(perms))
+	for i, perm := range perms {
+		db.Delegations[i], err = DelegateFull(random, hd, from, keys, to, perm)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return db, nil
 }

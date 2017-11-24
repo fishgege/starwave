@@ -16,9 +16,9 @@ func TimeRangeFromPathsSingleLevel(prefix TimePath, startQuantity uint16, endQua
 
 	ids := make([]TimePath, 0, endQuantity-startQuantity+1)
 
-	newComponentIndex := TimeComponentPosition(len(prefix) + 1)
+	newComponentIndex := TimeComponentPosition(len(prefix))
 	for q := startQuantity; q <= endQuantity; q++ {
-		id := make(TimePath, 0, len(prefix)+1)
+		id := make(TimePath, 0, len(prefix))
 		id = append(id, prefix...)
 		id = append(id, NewTimeComponent(q, newComponentIndex))
 		ids = append(ids, id)
@@ -167,14 +167,14 @@ func TimeRangeFromPaths(startPath TimePath, endPath TimePath) []TimePath {
 	return ids
 }
 
-func TimeRange(start time.Time, end time.Time) []TimePath {
+func TimeRange(start time.Time, end time.Time) ([]TimePath, error) {
 	startPath, err := ParseTime(start)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	endPath, err := ParseTime(end)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return TimeRangeFromPaths(startPath, endPath)
+	return TimeRangeFromPaths(startPath, endPath), nil
 }

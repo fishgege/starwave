@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"testing"
+	"time"
 )
 
 func remarshalHelper(m Marshallable) {
@@ -118,4 +119,77 @@ func TestPanicOnUnexpectedMessage(t *testing.T) {
 	master.Unmarshal(marshalled)
 
 	t.Fatal("Did not panic when unmarshalling unexpected message")
+}
+
+func TestDelegationBundleWithMarshalling(t *testing.T) {
+	hierarchy, master, err := CreateHierarchy(rand.Reader, "My Hierarchy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	remarshalHelper(hierarchy)
+	remarshalHelper(master)
+
+	start, end1, end2, end3 := getTimesHelper(t)
+
+	authority, asecret := createEntityHelper(t, "Authority")
+	remarshalHelper(authority)
+	remarshalHelper(asecret)
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	remarshalHelper(intermediate1)
+	remarshalHelper(i1secret)
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
+	remarshalHelper(intermediate2)
+	remarshalHelper(i2secret)
+	reader, rsecret := createEntityHelper(t, "Reader")
+	remarshalHelper(reader)
+	remarshalHelper(rsecret)
+
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remarshalHelper(db1)
+
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, ExtractKeys(db1, i1secret), intermediate2, "a/b/c/*", start, end1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remarshalHelper(db2)
+
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, ExtractKeys(db2, i2secret), reader, "a/b/c/d/*", start, end3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remarshalHelper(db3)
+
+	targettime, err := time.Parse(time.RFC822Z, "01 Mar 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, err := ParsePermission("a/b/c/d/e", targettime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remarshalHelper(perm)
+
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	if key == nil {
+		t.Fatal("Could not derive key from chain")
+	}
+	remarshalHelper(key)
+
+	message := randomMessageHelper(t)
+
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remarshalHelper(emsg)
+
+	decrypted := Decrypt(emsg, key)
+	if !bytes.Equal(message, decrypted) {
+		t.Fatal("Decrypted message is different from original message")
+	}
 }

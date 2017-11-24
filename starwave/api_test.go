@@ -176,3 +176,271 @@ func TestBroadeningDelegation(t *testing.T) {
 		t.Fatal("Decrypted message is different from original message")
 	}
 }
+
+func getTimesHelper(t *testing.T) (time.Time, time.Time, time.Time, time.Time) {
+	start, err := time.Parse(time.RFC822Z, "01 Jan 15 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	end1, err := time.Parse(time.RFC822Z, "06 Mar 18 06:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	end2, err := time.Parse(time.RFC822Z, "01 Apr 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	end3, err := time.Parse(time.RFC822Z, "04 Apr 19 02:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return start, end1, end2, end3
+}
+
+func TestDelegationBundleBroadening(t *testing.T) {
+	hierarchy, master, err := CreateHierarchy(rand.Reader, "My Hierarchy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end1, end2, end3 := getTimesHelper(t)
+
+	_, asecret := createEntityHelper(t, "Authority")
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
+	reader, rsecret := createEntityHelper(t, "Reader")
+
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/*", start, end2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targettime, err := time.Parse(time.RFC822Z, "01 Mar 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, err := ParsePermission("a/b/c/d/e", targettime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	if key == nil {
+		t.Fatal("Could not derive key from chain")
+	}
+
+	message := randomMessageHelper(t)
+
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decrypted := Decrypt(emsg, key)
+	if !bytes.Equal(message, decrypted) {
+		t.Fatal("Decrypted message is different from original message")
+	}
+}
+
+func TestDelegationBundleNotAChain(t *testing.T) {
+	hierarchy, master, err := CreateHierarchy(rand.Reader, "My Hierarchy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end1, end2, end3 := getTimesHelper(t)
+
+	_, asecret := createEntityHelper(t, "Authority")
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
+	reader, rsecret := createEntityHelper(t, "Reader")
+
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/d/f", start, end2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targettime, err := time.Parse(time.RFC822Z, "01 Mar 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, err := ParsePermission("a/b/c/d/e", targettime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	if key != nil {
+		t.Fatal("Derived key from bogus chain")
+	}
+}
+
+func TestDelegationBundleNoKey(t *testing.T) {
+	hierarchy, _, err := CreateHierarchy(rand.Reader, "My Hierarchy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end1, end2, end3 := getTimesHelper(t)
+
+	_, asecret := createEntityHelper(t, "Authority")
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
+	reader, rsecret := createEntityHelper(t, "Reader")
+
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{}, intermediate1, "a/b/c/d/*", start, end1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/*", start, end2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targettime, err := time.Parse(time.RFC822Z, "01 Mar 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, err := ParsePermission("a/b/c/d/e", targettime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	if key != nil {
+		t.Fatal("Derived key from bogus chain")
+	}
+}
+
+func TestDelegationBundleNotBroadening(t *testing.T) {
+	hierarchy, master, err := CreateHierarchy(rand.Reader, "My Hierarchy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end1, end2, end3 := getTimesHelper(t)
+
+	_, asecret := createEntityHelper(t, "Authority")
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
+	reader, rsecret := createEntityHelper(t, "Reader")
+
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/*", start, end2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targettime, err := time.Parse(time.RFC822Z, "01 Mar 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, err := ParsePermission("a/b/c/d/e", targettime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	if key != nil {
+		t.Fatal("Derived key from bogus chain")
+	}
+}
+
+func TestDelegationBundleWithTransferredKeys(t *testing.T) {
+	hierarchy, master, err := CreateHierarchy(rand.Reader, "My Hierarchy")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start, end1, end2, end3 := getTimesHelper(t)
+
+	_, asecret := createEntityHelper(t, "Authority")
+	intermediate1, i1secret := createEntityHelper(t, "Intermediate 1")
+	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
+	reader, rsecret := createEntityHelper(t, "Reader")
+
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, ExtractKeys(db1, i1secret), intermediate2, "a/b/c/*", start, end1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, ExtractKeys(db2, i2secret), reader, "a/b/c/d/*", start, end3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	targettime, err := time.Parse(time.RFC822Z, "01 Mar 18 00:00 +0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, err := ParsePermission("a/b/c/d/e", targettime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	if key == nil {
+		t.Fatal("Could not derive key from chain")
+	}
+
+	message := randomMessageHelper(t)
+
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decrypted := Decrypt(emsg, key)
+	if !bytes.Equal(message, decrypted) {
+		t.Fatal("Decrypted message is different from original message")
+	}
+}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math/big"
 	"strconv"
@@ -87,6 +88,20 @@ func (up URIPath) ID() ID {
 		id[0] = up[0]
 	}
 	return id
+}
+
+func IsURIPrefix(up1 URIPath, up2 URIPath) bool {
+	if len(up1) > len(up2) {
+		return false
+	}
+
+	for i, comp := range up1 {
+		if !bytes.Equal(comp.Representation(), up2[i].Representation()) {
+			return false
+		}
+	}
+
+	return true
 }
 
 /* Time Component */
@@ -210,6 +225,20 @@ func (tp TimePath) ID() ID {
 		id[0] = tp[0]
 	}
 	return id
+}
+
+func IsTimePrefix(tp1 TimePath, tp2 TimePath) bool {
+	if len(tp1) > len(tp2) {
+		return false
+	}
+
+	for i, comp := range tp1 {
+		if !bytes.Equal(comp.Representation(), tp2[i].Representation()) {
+			return false
+		}
+	}
+
+	return true
 }
 
 /* ID */

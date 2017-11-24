@@ -6,6 +6,14 @@ import (
 	"time"
 )
 
+func TimeRangeSafe(t *testing.T, start time.Time, end time.Time) []TimePath {
+	res, err := TimeRange(start, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
 func TimePathsToStrings(ids []TimePath) []string {
 	idStrings := make([]string, len(ids))
 	for i, id := range ids {
@@ -24,7 +32,7 @@ func TestTimeRange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	times := TimeRange(start, end)
+	times := TimeRangeSafe(t, start, end)
 	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/12/28/21", "2017/12/28/22",
 		"2017/12/28/23", "2017/12/29", "2017/12/30", "2017/12/31", "2018",
@@ -46,7 +54,7 @@ func TestTimeRangeOneDay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	times := TimeRange(start, end)
+	times := TimeRangeSafe(t, start, end)
 	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10"}
 
@@ -65,7 +73,7 @@ func TestTimeRangeTwoDays(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	times := TimeRange(start, end)
+	times := TimeRangeSafe(t, start, end)
 	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10", "2017/10/11"}
 
@@ -84,7 +92,7 @@ func TestTimeRangeSingle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	times := TimeRange(start, end)
+	times := TimeRangeSafe(t, start, end)
 	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10/18"}
 
@@ -103,7 +111,7 @@ func TestTimeRangeTwoHours(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	times := TimeRange(start, end)
+	times := TimeRangeSafe(t, start, end)
 	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2017/10/10/18", "2017/10/10/19"}
 
@@ -122,7 +130,7 @@ func TestTimeRangeFebruary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	times := TimeRange(start, end)
+	times := TimeRangeSafe(t, start, end)
 	timeStrings := TimePathsToStrings(times)
 	expectedTimeStrings := []string{"2016/2/28/23", "2016/2/29", "2016/3/1", "2016/3/2/0"}
 
