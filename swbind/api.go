@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ type SWClient struct {
 	*bw2bind.BW2Client
 	myhash   string
 	mysecret *starwave.EntitySecret
+	nskey    *starwave.DecryptionKey
 }
 
 /* Some important utilities */
@@ -83,52 +86,61 @@ func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain) ([]*starwave.Delega
  * override, although I am not actually adding that much functionality.
  */
 
-func (swc *SWClient) setLocalEntity(vk string) {
-	swc.myhash = vk
-	ro, _, err := swc.ResolveRegistry(vk)
-	if err != nil {
-		panic(err)
-	}
-	self := ro.(*objects.Entity)
+func (swc *SWClient) setLocalSecrets(input []byte) []byte {
 	swc.mysecret = new(starwave.EntitySecret)
-	success := swc.mysecret.Unmarshal([]byte(self.GetComment()))
-	if !success {
-		panic("Set local entity using invalid entity secret")
+	input = starwave.UnmarshalPrefixWithLength(swc.mysecret, input)
+	if input == nil {
+		return nil
 	}
+	swc.nskey = new(starwave.DecryptionKey)
+	return starwave.UnmarshalPrefixWithLength(swc.nskey, input)
 }
 
 func (swc *SWClient) SetEntity(keyfile []byte) (vk string, err error) {
+	keyfile = swc.setLocalSecrets(keyfile)
+	if keyfile == nil {
+		return "", errors.New("Entity has invalid STARWAVE secrets")
+	}
 	vk, err = swc.BW2Client.SetEntity(keyfile)
 	if err != nil {
-		swc.setLocalEntity(vk)
+		swc.myhash = vk
 	}
 	return
 }
 
 func (swc *SWClient) SetEntityFile(filename string) (vk string, err error) {
-	vk, err = swc.BW2Client.SetEntityFile(filename)
+	contents, err := ioutil.ReadFile(filename)
 	if err != nil {
-		swc.setLocalEntity(vk)
+		return "", err
 	}
-	return
+	return swc.SetEntity(contents[1:])
 }
 
 func (swc *SWClient) SetEntityFileOrExit(filename string) (vk string) {
-	vk = swc.BW2Client.SetEntityFileOrExit(filename)
-	swc.setLocalEntity(vk)
-	return
+	rv, e := swc.SetEntityFile(filename)
+	if e != nil {
+		fmt.Fprintln(os.Stderr, "Could not set entity file:", e.Error())
+		os.Exit(1)
+	}
+	return rv
 }
 
 func (swc *SWClient) SetEntityFromEnvironOrExit() (vk string) {
-	vk = swc.BW2Client.SetEntityFromEnvironOrExit()
-	swc.setLocalEntity(vk)
-	return
+	fname := os.Getenv("BW2_DEFAULT_ENTITY")
+	if fname == "" {
+		fmt.Fprintln(os.Stderr, "$BW2_DEFAULT_ENTITY not set")
+		os.Exit(1)
+	}
+	return swc.SetEntityFileOrExit(fname)
 }
 
 func (swc *SWClient) SetEntityOrExit(keyfile []byte) (vk string) {
-	vk = swc.BW2Client.SetEntityOrExit(keyfile)
-	swc.setLocalEntity(vk)
-	return
+	rv, e := swc.SetEntity(keyfile)
+	if e != nil {
+		fmt.Fprintln(os.Stderr, "Could not set entity :", e.Error())
+		os.Exit(1)
+	}
+	return rv
 }
 
 /* Creating DOTs. I need to modify these so they delegate OAQUE keys too. */
@@ -313,7 +325,7 @@ func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*st
 	return key, nil
 }
 
-func (swc *SWClient) subscribeDecryptor(input chan *bw2bind.SimpleMessage) chan *bw2bind.SimpleMessage {
+func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) chan *bw2bind.SimpleMessage {
 	output := make(chan *bw2bind.SimpleMessage, 1024)
 	go func() {
 		var decryptor *starwave.Decryptor
@@ -325,7 +337,7 @@ func (swc *SWClient) subscribeDecryptor(input chan *bw2bind.SimpleMessage) chan 
 					emsg := new(starwave.EncryptedMessage)
 					emsg.Unmarshal(po.GetContents())
 					perm := emsg.Key.Permissions
-					if cachedperm == nil || !perm.Contains(cachedperm) || !cachedperm.Contains(perm) {
+					if cachedperm == nil || !perm.Equals(cachedperm) {
 						// Need to get a decryptor
 						key, err := swc.obtainKey(namespace, perm)
 						if err != nil || key == nil {
@@ -333,7 +345,7 @@ func (swc *SWClient) subscribeDecryptor(input chan *bw2bind.SimpleMessage) chan 
 						}
 						decryptor = starwave.PrepareDecryption(perm, key)
 					}
-					if decryptor != nil && perm.Contains(cachedperm) && cachedperm.Contains(perm) {
+					if decryptor != nil && perm.Equals(cachedperm) {
 						// Decrypt the PO
 						msg.POs[i] = decryptPO(decryptor, po)
 					}
@@ -341,6 +353,7 @@ func (swc *SWClient) subscribeDecryptor(input chan *bw2bind.SimpleMessage) chan 
 			}
 			output <- msg
 		}
+		close(output)
 	}()
 	return output
 }
@@ -364,4 +377,64 @@ func (swc *SWClient) SubscribeH(p *bw2bind.SubscribeParams) (chan *bw2bind.Simpl
 func (swc *SWClient) SubscribeOrExit(p *bw2bind.SubscribeParams) chan *bw2bind.SimpleMessage {
 	messages := swc.BW2Client.SubscribeOrExit(p)
 	return swc.subscribeDecryptor(messages)
+}
+
+func (swc *SWClient) Query(p *bw2bind.QueryParams) (chan *bw2bind.SimpleMessage, error) {
+	messages, err := swc.BW2Client.Query(p)
+	if err != nil {
+		return nil, err
+	}
+	return swc.subscribeDecryptor(messages), nil
+}
+
+func (swc *SWClient) QueryOne(p *bw2bind.QueryParams) (*bw2bind.SimpleMessage, error) {
+	message, err := swc.BW2Client.QueryOne(p)
+	if err != nil {
+		return nil, err
+	}
+	input := make(chan *bw2bind.SimpleMessage, 1)
+	input <- message
+	output := swc.subscribeDecryptor(input)
+	close(input)
+	message = <-output
+	return message, err
+}
+
+func (swc *SWClient) QueryOneOrExit(p *bw2bind.QueryParams) *bw2bind.SimpleMessage {
+	rv, err := swc.QueryOne(p)
+	if err != nil {
+		fmt.Printf("Could not query: %v\n", err)
+		os.Exit(1)
+	}
+	return rv
+}
+
+func (swc *SWClient) QueryOrExit(p *bw2bind.QueryParams) chan *bw2bind.SimpleMessage {
+	messages := swc.BW2Client.QueryOrExit(p)
+	return swc.subscribeDecryptor(messages)
+}
+
+// Creation of entities.
+
+func (swc *SWClient) CreateEntity(p *bw2bind.CreateEntityParams) (string, []byte, error) {
+	vk, binrep, err := swc.BW2Client.CreateEntity(p)
+	if err != nil {
+		return "", nil, err
+	}
+
+	ed, es, err := starwave.CreateEntity(rand.Reader, p.Contact)
+	if err != nil {
+		return "", nil, err
+	}
+	hd, master, err := starwave.CreateHierarchy(rand.Reader, p.Comment)
+	if err != nil {
+		return "", nil, err
+	}
+	p.Contact = string(ed.Marshal())
+	p.Comment = string(hd.Marshal())
+
+	swbinrep := es.Marshal()
+	swbinrep = append(swbinrep, master.Marshal()...)
+	swbinrep = append(swbinrep, binrep...)
+	return vk, swbinrep, err
 }

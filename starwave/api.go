@@ -80,6 +80,12 @@ func (p *Permission) Contains(other *Permission) bool {
 	return core.IsURIPrefix(p.URI, other.URI) && core.IsTimePrefix(p.Time, other.Time)
 }
 
+// Equals returns true if this permission is equal to the permission passed as
+// an argument
+func (p *Permission) Equals(other *Permission) bool {
+	return p.Contains(other) && other.Contains(p)
+}
+
 // AttributeSet converts a permission into an attribute list for use with OAQUE.
 func (p *Permission) AttributeSet() oaque.AttributeList {
 	return core.AttributeSetFromPaths(p.URI, p.Time)
