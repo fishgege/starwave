@@ -146,7 +146,7 @@ func (swc *SWClient) SetEntityOrExit(keyfile []byte) (vk string) {
 
 func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, error) {
 	// Only subscribe DoTs change
-	if !strings.Contains(p.AccessPermissions, "S") {
+	if !strings.Contains(p.AccessPermissions, "C") {
 		return swc.BW2Client.CreateDOT(p)
 	}
 
@@ -173,23 +173,30 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 
 	// Now I need to figure out what keys I can include in the DoT
-	keys := make([]*starwave.DecryptionKey, len(perms))
-	chains, err := swc.BuildChain(p.URI, "S", swc.myhash)
-	for chain := range chains {
-		bundles, err := resolveChain(swc, chain)
-		if err != nil {
-			// Don't let one bad chain make the whole thing unusable
-			continue
-		}
-		for i, perm := range perms {
-			if keys[i] != nil {
-				keys[i] = starwave.DeriveKey(bundles, perm, swc.mysecret)
+	var keys []*starwave.DecryptionKey
+	if namespace == swc.myhash {
+		// Just include the master key. DelegateBundle() should deal with
+		// generating the appropriate subkeys.
+		keys = []*starwave.DecryptionKey{swc.nskey}
+	} else {
+		keys = make([]*starwave.DecryptionKey, len(perms))
+		chains, err := swc.BuildChain(p.URI, "C", swc.myhash)
+		for chain := range chains {
+			bundles, err := resolveChain(swc, chain)
+			if err != nil {
+				// Don't let one bad chain make the whole thing unusable
+				continue
 			}
+			for i, perm := range perms {
+				if keys[i] != nil {
+					keys[i] = starwave.DeriveKey(bundles, perm, swc.mysecret)
+				}
+			}
+			// TODO: Also include partially overlapping keys
 		}
-		// TODO: Also include partially overlapping keys
-	}
-	if err != nil {
-		return "", nil, err
+		if err != nil {
+			return "", nil, err
+		}
 	}
 
 	// Filter out nil keys
@@ -246,12 +253,15 @@ func encryptPO(random io.Reader, hd *starwave.HierarchyDescriptor, perm *starwav
 	}
 
 	encrypted := new(bw2bind.PayloadObjectImpl)
-	encrypted.SetPONum(0)
+	encrypted.SetPONum(bw2bind.PONumPOEncryptedSTARWAVE)
 	encrypted.SetContents(message.Marshal())
 	return encrypted, nil
 }
 
 func decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) bw2bind.PayloadObject {
+	if po.GetPONum() != bw2bind.PONumPOEncryptedSTARWAVE {
+		panic("Trying to decrypt message which is not STARWAVE-encrypted")
+	}
 	message := new(starwave.EncryptedMessage)
 	success := message.Unmarshal(po.GetContents())
 	if !success {
@@ -305,7 +315,7 @@ func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*st
 	fullURI := strings.Join([]string{namespace, perm.URI.String()}, "/")
 
 	var key *starwave.DecryptionKey
-	chains, err := swc.BW2Client.BuildChain(fullURI, "S", swc.myhash)
+	chains, err := swc.BW2Client.BuildChain(fullURI, "C", swc.myhash)
 	for chain := range chains {
 		bundles, err := resolveChain(swc, chain)
 		if err != nil {
@@ -332,7 +342,7 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 		for msg := range input {
 			namespace := strings.SplitN(msg.URI, "/", 2)[0]
 			for i, po := range msg.POs {
-				if po.GetPONum() == 0 {
+				if po.GetPONum() == bw2bind.PONumPOEncryptedSTARWAVE {
 					emsg := new(starwave.EncryptedMessage)
 					emsg.Unmarshal(po.GetContents())
 					perm := emsg.Key.Permissions
@@ -492,4 +502,10 @@ func (swc *SWClient) PublishEntityWithAcc(blob []byte, account int) (string, err
 
 func (swc *SWClient) PublishEntity(blob []byte) (string, error) {
 	return swc.PublishEntityWithAcc(blob, 0)
+}
+
+/* Other functions */
+
+func SilenceLog() {
+	bw2bind.SilenceLog()
 }
