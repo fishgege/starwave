@@ -152,7 +152,7 @@ func unmarshalMsg(t marshalable, from []byte) ([]byte, error) {
 	return rem, nil
 }
 func marshalMsg(t marshalable, onto []byte) ([]byte, error) {
-	return append(onto, t.Marshal()...), nil
+	return msgp.AppendBytes(onto, t.Marshal()), nil
 }
 func encodeMsg(t marshalable, w *msgp.Writer) error {
 	return w.WriteBytes(t.Marshal())
