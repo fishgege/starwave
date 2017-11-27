@@ -437,7 +437,7 @@ func appendSecretsToEntity(entity []byte, es *starwave.EntitySecret, master *sta
 	entity = append(entity, esm...)
 	entity = append(entity, masterm...)
 
-	binary.LittleEndian.PutUint32(lenbuf, uint32(len(esm)+len(masterm)))
+	binary.LittleEndian.PutUint32(lenbuf, uint32(len(lenbuf)+len(esm)+len(masterm)))
 	entity = append(entity, lenbuf...)
 	entity = append(entity, magicEntitySuffix...)
 	return entity
@@ -464,9 +464,17 @@ func extractSecretsFromEntity(entity []byte, unmarshalSecrets bool) ([]byte, *st
 		masterm := footer[esmlen:]
 
 		es := new(starwave.EntitySecret)
-		es.Unmarshal(esm)
+		success := es.Unmarshal(esm)
+		if !success {
+			fmt.Println("Could not unmarshal entity secret")
+			return entity, nil, nil
+		}
 		master := new(starwave.DecryptionKey)
-		master.Unmarshal(masterm)
+		success = master.Unmarshal(masterm)
+		if !success {
+			fmt.Println("Could not unmarshal hierarhcy secret")
+			return entity, es, nil
+		}
 
 		return entity, es, master
 	} else {
