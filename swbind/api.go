@@ -1,6 +1,7 @@
 package swbind
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -87,13 +88,11 @@ func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain) ([]*starwave.Delega
  */
 
 func (swc *SWClient) setLocalSecrets(input []byte) []byte {
-	swc.mysecret = new(starwave.EntitySecret)
-	input = starwave.UnmarshalPrefixWithLength(swc.mysecret, input)
-	if input == nil {
-		return nil
+	input, swc.mysecret, swc.nskey = extractSecretsFromEntity(input, true)
+	if swc.mysecret == nil || swc.nskey == nil {
+		panic("Setting local entity to non-STARWAVE entity")
 	}
-	swc.nskey = new(starwave.DecryptionKey)
-	return starwave.UnmarshalPrefixWithLength(swc.nskey, input)
+	return input
 }
 
 func (swc *SWClient) SetEntity(keyfile []byte) (vk string, err error) {
@@ -296,7 +295,7 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 		}
 	}
 
-	// Encrypt each payload object.
+	// Encrypt each payload object
 	return swc.BW2Client.Publish(p)
 }
 
@@ -416,6 +415,56 @@ func (swc *SWClient) QueryOrExit(p *bw2bind.QueryParams) chan *bw2bind.SimpleMes
 
 // Creation of entities.
 
+// This suffix indicates that an entity contains STARWAVE secrets.
+var magicEntitySuffix = []byte{180, 247, 117, 78, 239, 80, 110, 253, 171, 214, 166, 250, 180, 104, 213, 50, 119, 29, 188, 138, 159, 229, 153, 145, 241, 194, 111, 91, 220, 70, 146, 169, 55, 209, 134, 24, 166, 182, 184, 168, 235, 86, 237, 56, 185, 210, 88, 164, 81, 252, 255, 92, 173, 85, 250, 109, 90, 2, 242, 82, 92, 249, 156, 189}
+
+func appendSecretsToEntity(entity []byte, es *starwave.EntitySecret, master *starwave.DecryptionKey) []byte {
+	esm := es.Marshal()
+	masterm := master.Marshal()
+	lenbuf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(lenbuf, uint32(len(esm)))
+	entity = append(entity, lenbuf...)
+	entity = append(entity, esm...)
+	entity = append(entity, masterm...)
+
+	binary.LittleEndian.PutUint32(lenbuf, uint32(len(esm)+len(masterm)))
+	entity = append(entity, lenbuf...)
+	entity = append(entity, magicEntitySuffix...)
+	return entity
+}
+
+// Returns the original entity if it didn't have STARWAVE secrets appended
+func extractSecretsFromEntity(entity []byte, unmarshalSecrets bool) ([]byte, *starwave.EntitySecret, *starwave.DecryptionKey) {
+	last64bytes := entity[len(entity)-len(magicEntitySuffix):]
+	if bytes.Equal(last64bytes, magicEntitySuffix) {
+		// This is a STARWAVE entity with appended secrets
+		entity = entity[:len(entity)-len(magicEntitySuffix)]
+		footerlen := binary.LittleEndian.Uint32(entity[len(entity)-4:])
+		entity = entity[:len(entity)-4]
+		footerstartidx := len(entity) - int(footerlen)
+		footer := entity[footerstartidx:]
+		entity = entity[:footerstartidx]
+		if !unmarshalSecrets {
+			return entity, nil, nil
+		}
+
+		esmlen := binary.LittleEndian.Uint32(footer[:4])
+		footer = footer[4:]
+		esm := footer[:esmlen]
+		masterm := footer[esmlen:]
+
+		es := new(starwave.EntitySecret)
+		es.Unmarshal(esm)
+		master := new(starwave.DecryptionKey)
+		master.Unmarshal(masterm)
+
+		return entity, es, master
+	} else {
+		// This is a regular BOSSWAVE entity.
+		return entity, nil, nil
+	}
+}
+
 func (swc *SWClient) CreateEntity(p *bw2bind.CreateEntityParams) (string, []byte, error) {
 	vk, binrep, err := swc.BW2Client.CreateEntity(p)
 	if err != nil {
@@ -433,8 +482,14 @@ func (swc *SWClient) CreateEntity(p *bw2bind.CreateEntityParams) (string, []byte
 	p.Contact = string(ed.Marshal())
 	p.Comment = string(hd.Marshal())
 
-	swbinrep := es.Marshal()
-	swbinrep = append(swbinrep, master.Marshal()...)
-	swbinrep = append(swbinrep, binrep...)
-	return vk, swbinrep, err
+	return vk, appendSecretsToEntity(binrep, es, master), err
+}
+
+func (swc *SWClient) PublishEntityWithAcc(blob []byte, account int) (string, error) {
+	blob, _, _ = extractSecretsFromEntity(blob, false)
+	return swc.BW2Client.PublishEntityWithAcc(blob, account)
+}
+
+func (swc *SWClient) PublishEntity(blob []byte) (string, error) {
+	return swc.PublishEntityWithAcc(blob, 0)
 }
