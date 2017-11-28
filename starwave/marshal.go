@@ -100,6 +100,9 @@ type Marshallable interface {
 }
 
 func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
+	if m == nil {
+		return MarshalAppendLength(0, buf)
+	}
 	marshalled := m.Marshal()
 	buf = MarshalAppendLength(len(marshalled), buf)
 	buf = append(buf, marshalled...)
@@ -108,6 +111,10 @@ func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
 
 func UnmarshalPrefixWithLength(m Marshallable, buf []byte) []byte {
 	length, buf := UnmarshalPrefixLength(buf)
+	if length == 0 {
+		// Message was nil
+		return buf
+	}
 	success := m.Unmarshal(buf[:length])
 	if !success {
 		return nil
@@ -407,8 +414,15 @@ func (fd *FullDelegation) Marshal() []byte {
 
 	buf = MarshalAppendWithLength(fd.Broad, buf)
 	buf = MarshalAppendLength(len(fd.Narrow), buf)
+	/* In any normal FullDelegation, the "To" and "Hierarchy" fields in each
+	 * BroadeningDelgationWithKey are the same. In fact, the "To" field is
+	 * already in fd.Broad.
+	 */
+	if len(fd.Narrow) != 0 {
+		buf = MarshalAppendWithLength(fd.Narrow[0].Hierarchy, buf)
+	}
 	for _, narrowing := range fd.Narrow {
-		buf = MarshalAppendWithLength(narrowing, buf)
+		buf = MarshalAppendWithLength(narrowing.Key, buf)
 	}
 
 	return buf
@@ -421,14 +435,22 @@ func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
 	buf = UnmarshalPrefixWithLength(fd.Broad, buf)
 
 	numNarrowing, buf := UnmarshalPrefixLength(buf)
-
+	var hierarchy *HierarchyDescriptor
+	if numNarrowing != 0 {
+		hierarchy = new(HierarchyDescriptor)
+		buf = UnmarshalPrefixWithLength(hierarchy, buf)
+	}
 	fd.Narrow = make([]*BroadeningDelegationWithKey, numNarrowing)
 	for i := range fd.Narrow {
-		fd.Narrow[i] = new(BroadeningDelegationWithKey)
-		buf = UnmarshalPrefixWithLength(fd.Narrow[i], buf)
+		key := new(EncryptedMessage)
+		buf = UnmarshalPrefixWithLength(key, buf)
 		if buf == nil {
 			return false
 		}
+		fd.Narrow[i] = new(BroadeningDelegationWithKey)
+		fd.Narrow[i].Key = key
+		fd.Narrow[i].To = fd.Broad.To
+		fd.Narrow[i].Hierarchy = hierarchy
 	}
 
 	return true

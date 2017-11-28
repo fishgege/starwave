@@ -552,11 +552,6 @@ func PermissionRange(uri string, timeStart time.Time, timeEnd time.Time) ([]*Per
 // providing keys that are available right now.
 func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, perm *Permission) (*FullDelegation, error) {
 	fd := new(FullDelegation)
-	var err error
-	fd.Broad, err = DelegateBroadening(random, hd, from, to, perm)
-	if err != nil {
-		return nil, err
-	}
 
 	// Now, of the provided keys, check which ones can provide at least parts of
 	// the specified permissions.
@@ -591,6 +586,12 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 			}
 			fd.Narrow = append(fd.Narrow, nkey)
 		}
+	}
+
+	var err error
+	fd.Broad, err = DelegateBroadening(random, hd, from, to, perm)
+	if err != nil {
+		return nil, err
 	}
 
 	return fd, nil

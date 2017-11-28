@@ -3,6 +3,7 @@ package swbind
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -19,7 +20,8 @@ import (
 
 type SWClient struct {
 	*bw2bind.BW2Client
-	myhash   string
+	myvk     string
+	myself   *objects.Entity
 	mysecret *starwave.EntitySecret
 	nskey    *starwave.DecryptionKey
 }
@@ -101,8 +103,18 @@ func (swc *SWClient) SetEntity(keyfile []byte) (vk string, err error) {
 		return "", errors.New("Entity has invalid STARWAVE secrets")
 	}
 	vk, err = swc.BW2Client.SetEntity(keyfile)
-	if err != nil {
-		swc.myhash = vk
+	if err == nil {
+		robj, err := objects.NewEntity(objects.ROEntityWKey, keyfile)
+		if err != nil {
+			panic("Able to set entity to invalid keyfile")
+		}
+		e := robj.(*objects.Entity)
+		swc.myself = e
+		swc.myvk = e.StringKey()
+
+		if swc.myvk != vk {
+			panic("Parsed VK is not equal to the returned VK")
+		}
 	}
 	return
 }
@@ -166,6 +178,11 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 	p.ExpiryDelta = nil
 
+	expiry, err := time.Parse(time.RFC822Z, "01 Jan 18 00:00 +0000")
+	if err != nil {
+		return "", nil, err
+	}
+
 	namespace, uri := extractNamespace(p.URI)
 	perms, err := starwave.PermissionRange(uri, StartOfTime(), expiry)
 	if err != nil {
@@ -174,13 +191,15 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 
 	// Now I need to figure out what keys I can include in the DoT
 	var keys []*starwave.DecryptionKey
-	if namespace == swc.myhash {
+	if namespace == swc.myvk {
 		// Just include the master key. DelegateBundle() should deal with
 		// generating the appropriate subkeys.
+		fmt.Println("I am the namespace authority")
 		keys = []*starwave.DecryptionKey{swc.nskey}
 	} else {
+		fmt.Println("I am not the namespace authority")
 		keys = make([]*starwave.DecryptionKey, len(perms))
-		chains, err := swc.BuildChain(p.URI, "C", swc.myhash)
+		chains, err := swc.BuildChain(p.URI, "C", swc.myvk)
 		for chain := range chains {
 			bundles, err := resolveChain(swc, chain)
 			if err != nil {
@@ -189,6 +208,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 			}
 			for i, perm := range perms {
 				if keys[i] != nil {
+					fmt.Printf("Derived key for URI %s and Time %s\n", perm.URI.String(), perm.Time.String())
 					keys[i] = starwave.DeriveKey(bundles, perm, swc.mysecret)
 				}
 			}
@@ -207,16 +227,24 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		}
 	}
 
+	fmt.Println("Filtered out nil keys")
+
 	// Get Hierarchy params
 	authority, err := getEntity(swc, namespace)
 	if err != nil {
 		return "", nil, err
 	}
+
+	fmt.Println("Got entity")
+
 	hd := new(starwave.HierarchyDescriptor)
-	success := hd.Unmarshal([]byte(authority.GetContact()))
+	success := hd.Unmarshal([]byte(authority.GetComment()))
+	fmt.Println("Finished call to Unmarshal")
 	if !success {
 		return "", nil, errors.New("Invalid hierarchy descriptor in namespace authority")
 	}
+
+	fmt.Println("Got hierarchy parameters")
 
 	// Get params of destination
 	to, err := getEntity(swc, p.To)
@@ -224,7 +252,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		return "", nil, err
 	}
 	ed := new(starwave.EntityDescriptor)
-	success = ed.Unmarshal([]byte(to.GetComment()))
+	success = ed.Unmarshal([]byte(to.GetContact()))
 	if !success {
 		return "", nil, errors.New("Invalid entity descriptor in destination entity")
 	}
@@ -236,7 +264,39 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 	p.Comment = string(db.Marshal())
 
-	return swc.BW2Client.CreateDOT(p)
+	fmt.Println(len(db.Delegations))
+	fmt.Println(len(p.Comment))
+
+	// Now, actually make the DoT
+	d := objects.CreateDOT(!p.IsPermission, swc.myself.GetVK(), to.GetVK())
+	d.SetTTL(int(p.TTL))
+	d.SetContact(p.Contact)
+	d.SetComment(p.Comment)
+	if p.ExpiryDelta != nil {
+		d.SetExpiry(time.Now().Add(*p.ExpiryDelta))
+	} else if p.Expiry != nil {
+		d.SetExpiry(*p.Expiry)
+	}
+	if !p.OmitCreationDate {
+		d.SetCreationToNow()
+	}
+	for _, r := range p.Revokers {
+		rbytes, err := base64.URLEncoding.DecodeString(r)
+		if err != nil {
+			return "", nil, err
+		}
+		d.AddRevoker(rbytes)
+	}
+	if p.IsPermission {
+		panic("Got a permission DoT")
+	} else {
+		d.SetAccessURI(authority.GetVK(), uri)
+		if !d.SetPermString(p.AccessPermissions) {
+			return "", nil, err
+		}
+	}
+	d.Encode(swc.myself.GetSK())
+	return base64.URLEncoding.EncodeToString(d.GetHash()), d.GetContent(), nil
 }
 
 /* Publishing messages. Need to make sure that POs are encrypted. */
@@ -293,7 +353,7 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 		return err
 	}
 	hd := new(starwave.HierarchyDescriptor)
-	success := hd.Unmarshal([]byte(authority.GetContact()))
+	success := hd.Unmarshal([]byte(authority.GetComment()))
 	if !success {
 		return errors.New("Invalid hierarchy descriptor in namespace authority")
 	}
@@ -315,7 +375,7 @@ func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*st
 	fullURI := strings.Join([]string{namespace, perm.URI.String()}, "/")
 
 	var key *starwave.DecryptionKey
-	chains, err := swc.BW2Client.BuildChain(fullURI, "C", swc.myhash)
+	chains, err := swc.BW2Client.BuildChain(fullURI, "C", swc.myvk)
 	for chain := range chains {
 		bundles, err := resolveChain(swc, chain)
 		if err != nil {
@@ -484,11 +544,6 @@ func extractSecretsFromEntity(entity []byte, unmarshalSecrets bool) ([]byte, *st
 }
 
 func (swc *SWClient) CreateEntity(p *bw2bind.CreateEntityParams) (string, []byte, error) {
-	vk, binrep, err := swc.BW2Client.CreateEntity(p)
-	if err != nil {
-		return "", nil, err
-	}
-
 	ed, es, err := starwave.CreateEntity(rand.Reader, p.Contact)
 	if err != nil {
 		return "", nil, err
@@ -497,10 +552,33 @@ func (swc *SWClient) CreateEntity(p *bw2bind.CreateEntityParams) (string, []byte
 	if err != nil {
 		return "", nil, err
 	}
+
 	p.Contact = string(ed.Marshal())
 	p.Comment = string(hd.Marshal())
 
-	return vk, appendSecretsToEntity(binrep, es, master), err
+	revokers := make([][]byte, len(p.Revokers))
+	for i, revoker := range p.Revokers {
+		rbytes, err := base64.URLEncoding.DecodeString(revoker)
+		if err != nil {
+			return "", nil, err
+		}
+		revokers[i] = rbytes
+	}
+
+	e := objects.CreateNewEntity(p.Contact, p.Comment, revokers)
+	if p.ExpiryDelta != nil {
+		e.SetExpiry(time.Now().Add(*p.ExpiryDelta))
+	} else if p.Expiry != nil {
+		e.SetExpiry(*p.Expiry)
+	}
+	if !p.OmitCreationDate {
+		e.SetCreationToNow()
+	}
+
+	binrep := e.GetSigningBlob()
+	vk := string(e.GetVK())
+
+	return vk, appendSecretsToEntity(binrep, es, master), nil
 }
 
 func (swc *SWClient) PublishEntityWithAcc(blob []byte, account int) (string, error) {
