@@ -62,10 +62,14 @@ func (ecp TimeComponentPosition) String() string {
 	switch ecp {
 	case TimeComponentPositionYear:
 		return "year"
-	case TimeComponentPositionDay:
-		return "month"
 	case TimeComponentPositionMonth:
+		return "month"
+	case TimeComponentPositionFiveDays:
+		return "fivedays"
+	case TimeComponentPositionDay:
 		return "day"
+	case TimeComponentPositionSixHours:
+		return "sixhours"
 	case TimeComponentPositionHour:
 		return "hour"
 	default:
@@ -96,10 +100,12 @@ func ParseTimeFromPath(timePath []uint16) (TimePath, error) {
 }
 
 func ParseTime(time time.Time) (TimePath, error) {
-	path := make([]uint16, 4, 4)
+	path := make([]uint16, 6, 6)
 	path[0] = uint16(time.Year())
 	path[1] = uint16(time.Month())
-	path[2] = uint16(time.Day())
-	path[3] = uint16(time.Hour())
+	path[3] = uint16(time.Day())
+	path[2] = (path[3]-1)/5 + 1
+	path[5] = uint16(time.Hour())
+	path[4] = (path[5] / 6) + 1
 	return ParseTimeFromPath(path)
 }

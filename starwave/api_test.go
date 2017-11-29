@@ -91,7 +91,7 @@ func TestGeneralRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	perm, err := ParsePermissionFromPath([]string{"a", "b", "c"}, []uint16{2017, 12, 27, 04})
+	perm, err := ParsePermissionFromPath([]string{"a", "b", "c"}, []uint16{2017, 12, 6, 27, 1, 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestBroadeningDelegation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	perm, err := ParsePermissionFromPath([]string{"a", "b", "c"}, []uint16{2017, 12, 27, 04})
+	perm, err := ParsePermissionFromPath([]string{"a", "b", "c"}, []uint16{2017, 12, 6, 27, 1, 4})
 	if err != nil {
 		t.Fatal(err)
 	}

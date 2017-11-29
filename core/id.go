@@ -36,7 +36,7 @@ type IDComponent interface {
 
 type URIComponentPosition uint8
 
-const MaxURILength = 16
+const MaxURILength = 14
 
 type URIComponent []byte
 
@@ -106,14 +106,32 @@ func IsURIPrefix(up1 URIPath, up2 URIPath) bool {
 
 /* Time Component */
 
+// We divide time into components as follows:
+// Year
+// Month (always twelve per year)
+// Five-Day Periods (always six per month, last one may be shorter or longer)
+// Day (always five per five-day period)
+// Six-Hour Periods (always four per day)
+//
+// For example, 16 Feb 2017 at 5 PM is represented as follows:
+// 2017/02/3/16/2/17
+// 2017 represents year 2017
+// 02 represents February
+// 3 represents five-day period starting on the 16th
+// 16 represents day 16
+// 2 represents six-hour period starting at noon
+// 17 represents day 17
+
 type TimeComponentPosition uint8
 
-const MaxTimeLength = 4
+const MaxTimeLength = 6
 
 const (
 	TimeComponentPositionYear TimeComponentPosition = iota
 	TimeComponentPositionMonth
+	TimeComponentPositionFiveDays
 	TimeComponentPositionDay
+	TimeComponentPositionSixHours
 	TimeComponentPositionHour
 )
 
@@ -123,11 +141,17 @@ const MaxYear = 2050
 const MinMonth = 1
 const MaxMonth = 12
 
+const MinFiveDays = 1
+const MaxFiveDays = 6
+
 const MinDay = 1
 const MaxDay = 31
 const MaxDayShortMonth = 30
 const MaxDayFebruary = 28
 const MaxDayFebruaryLeapYear = 29
+
+const MinSixHours = 1
+const MaxSixHours = 4
 
 const MinHour = 0
 const MaxHour = 23
@@ -138,40 +162,48 @@ func TimeComponentBounds(prefix TimePath, position TimeComponentPosition) (uint1
 		return MinYear, MaxYear
 	case TimeComponentPositionMonth:
 		return MinMonth, MaxMonth
+	case TimeComponentPositionFiveDays:
+		return MinFiveDays, MaxFiveDays
 	case TimeComponentPositionDay:
-		switch time.Month(prefix[TimeComponentPositionMonth].Quantity()) {
-		case time.January:
-			fallthrough
-		case time.March:
-			fallthrough
-		case time.May:
-			fallthrough
-		case time.July:
-			fallthrough
-		case time.August:
-			fallthrough
-		case time.October:
-			fallthrough
-		case time.December:
-			return MinDay, MaxDay
-		case time.April:
-			fallthrough
-		case time.June:
-			fallthrough
-		case time.September:
-			fallthrough
-		case time.November:
-			return MinDay, MaxDayShortMonth
-		case time.February:
-			year := prefix[TimeComponentPositionYear].Quantity()
-			if year%4 == 0 && (year%100 != 0 || (year%400 == 0)) {
-				return MinDay, MaxDayFebruaryLeapYear
+		fivedays := prefix[TimeComponentPositionFiveDays].Quantity()
+		if fivedays == 6 {
+			switch time.Month(prefix[TimeComponentPositionMonth].Quantity()) {
+			case time.January:
+				fallthrough
+			case time.March:
+				fallthrough
+			case time.May:
+				fallthrough
+			case time.July:
+				fallthrough
+			case time.August:
+				fallthrough
+			case time.October:
+				fallthrough
+			case time.December:
+				return 26, MaxDay
+			case time.April:
+				fallthrough
+			case time.June:
+				fallthrough
+			case time.September:
+				fallthrough
+			case time.November:
+				return 26, MaxDayShortMonth
+			case time.February:
+				year := prefix[TimeComponentPositionYear].Quantity()
+				if year%4 == 0 && (year%100 != 0 || (year%400 == 0)) {
+					return 26, MaxDayFebruaryLeapYear
+				}
+				return 26, MaxDayFebruary
 			}
-			return MinDay, MaxDayFebruary
 		}
-		return MinDay, MaxDay
+		return 5*(fivedays-1) + 1, 5 * fivedays
+	case TimeComponentPositionSixHours:
+		return MinSixHours, MaxSixHours
 	case TimeComponentPositionHour:
-		return MinHour, MaxHour
+		sixhours := prefix[TimeComponentPositionSixHours].Quantity()
+		return 6 * (sixhours - 1), 6*sixhours - 1
 	default:
 		panic("Invalid position")
 	}
