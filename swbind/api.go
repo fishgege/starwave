@@ -178,10 +178,10 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 	p.ExpiryDelta = nil
 
-	expiry, err := time.Parse(time.RFC822Z, "01 Jan 18 00:00 +0000")
+	/*expiry, err := time.Parse(time.RFC822Z, "01 Jan 18 00:00 +0000")
 	if err != nil {
 		return "", nil, err
-	}
+	}*/
 
 	namespace, uri := extractNamespace(p.URI)
 	perms, err := starwave.PermissionRange(uri, StartOfTime(), expiry)

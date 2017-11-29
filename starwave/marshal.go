@@ -3,6 +3,7 @@ package starwave
 import (
 	"encoding/binary"
 	"fmt"
+	"reflect"
 
 	"github.com/SoftwareDefinedBuildings/starwave/core"
 	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
@@ -100,7 +101,7 @@ type Marshallable interface {
 }
 
 func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
-	if m == nil {
+	if m == nil || reflect.ValueOf(m).IsNil() {
 		return MarshalAppendLength(0, buf)
 	}
 	marshalled := m.Marshal()
@@ -412,6 +413,7 @@ func (bdk *BroadeningDelegationWithKey) Unmarshal(marshalled []byte) bool {
 func (fd *FullDelegation) Marshal() []byte {
 	buf := newMessageBuffer(2048+(1024*len(fd.Narrow)), TypeFullDelegation)
 
+	buf = MarshalAppendWithLength(fd.Permissions, buf)
 	buf = MarshalAppendWithLength(fd.Broad, buf)
 	buf = MarshalAppendLength(len(fd.Narrow), buf)
 	/* In any normal FullDelegation, the "To" and "Hierarchy" fields in each
@@ -431,8 +433,13 @@ func (fd *FullDelegation) Marshal() []byte {
 func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
 	buf := checkMessageType(marshalled, TypeFullDelegation)
 
+	fd.Permissions = new(Permission)
+	buf = UnmarshalPrefixWithLength(fd.Permissions, buf)
 	fd.Broad = new(BroadeningDelegation)
 	buf = UnmarshalPrefixWithLength(fd.Broad, buf)
+	if fd.Broad.Delegation == nil {
+		fd.Broad = nil
+	}
 
 	numNarrowing, buf := UnmarshalPrefixLength(buf)
 	var hierarchy *HierarchyDescriptor
@@ -460,8 +467,50 @@ func (db *DelegationBundle) Marshal() []byte {
 	buf := newMessageBuffer(4096, TypeDelegationBundle)
 
 	buf = MarshalAppendLength(len(db.Delegations), buf)
+	if len(db.Delegations) != 0 {
+		// To, From, and Hierarchy are the exact same for all delegations
+		var h *HierarchyDescriptor
+		var to *EntityDescriptor
+		var from *EntityDescriptor
+		for _, deleg := range db.Delegations {
+			if deleg.Broad != nil {
+				if to == nil {
+					to = deleg.Broad.To
+				}
+				if from == nil {
+					from = deleg.Broad.From
+				}
+				if h != nil {
+					break
+				}
+			}
+			if len(deleg.Narrow) != 0 {
+				if h == nil {
+					h = deleg.Narrow[0].Hierarchy
+				}
+				if to == nil {
+					to = deleg.Narrow[0].To
+				}
+				if to != nil && from != nil {
+					break
+				}
+			}
+		}
+		buf = MarshalAppendWithLength(to, buf)
+		buf = MarshalAppendWithLength(from, buf)
+		buf = MarshalAppendWithLength(h, buf)
+	}
 	for _, delegation := range db.Delegations {
-		buf = MarshalAppendWithLength(delegation, buf)
+		buf = MarshalAppendWithLength(delegation.Permissions, buf)
+		if delegation.Broad != nil {
+			buf = MarshalAppendWithLength(delegation.Broad.Delegation, buf)
+		} else {
+			buf = MarshalAppendWithLength(delegation.Broad, buf)
+		}
+		buf = MarshalAppendLength(len(delegation.Narrow), buf)
+		for _, narrowing := range delegation.Narrow {
+			buf = MarshalAppendWithLength(narrowing.Key, buf)
+		}
 	}
 
 	return buf
@@ -471,12 +520,62 @@ func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
 	buf := checkMessageType(marshalled, TypeDelegationBundle)
 
 	numDelegations, buf := UnmarshalPrefixLength(buf)
+	if buf == nil {
+		return false
+	}
+	to := new(EntityDescriptor)
+	from := new(EntityDescriptor)
+	h := new(HierarchyDescriptor)
+	if numDelegations != 0 {
+		buf = UnmarshalPrefixWithLength(to, buf)
+		if buf == nil {
+			return false
+		}
+		buf = UnmarshalPrefixWithLength(from, buf)
+		if buf == nil {
+			return false
+		}
+		buf = UnmarshalPrefixWithLength(h, buf)
+		if buf == nil {
+			return false
+		}
+	}
 	db.Delegations = make([]*FullDelegation, numDelegations)
 	for i := range db.Delegations {
 		db.Delegations[i] = new(FullDelegation)
-		buf = UnmarshalPrefixWithLength(db.Delegations[i], buf)
+		db.Delegations[i].Permissions = new(Permission)
+		buf = UnmarshalPrefixWithLength(db.Delegations[i].Permissions, buf)
 		if buf == nil {
 			return false
+		}
+		db.Delegations[i].Broad = new(BroadeningDelegation)
+		db.Delegations[i].Broad.Delegation = new(EncryptedMessage)
+		db.Delegations[i].Broad.From = from
+		db.Delegations[i].Broad.To = to
+		buf = UnmarshalPrefixWithLength(db.Delegations[i].Broad.Delegation, buf)
+		if buf == nil {
+			return false
+		}
+
+		if db.Delegations[i].Broad.Delegation.Key == nil {
+			db.Delegations[i].Broad = nil
+		}
+
+		var numNarrowing int
+		numNarrowing, buf = UnmarshalPrefixLength(buf)
+		if buf == nil {
+			return false
+		}
+		db.Delegations[i].Narrow = make([]*BroadeningDelegationWithKey, numNarrowing)
+		for j := range db.Delegations[i].Narrow {
+			db.Delegations[i].Narrow[j] = new(BroadeningDelegationWithKey)
+			db.Delegations[i].Narrow[j].Hierarchy = h
+			db.Delegations[i].Narrow[j].To = to
+			db.Delegations[i].Narrow[j].Key = new(EncryptedMessage)
+			buf = UnmarshalPrefixWithLength(db.Delegations[i].Narrow[j].Key, buf)
+			if buf == nil {
+				return false
+			}
 		}
 	}
 

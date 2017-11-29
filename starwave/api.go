@@ -159,12 +159,9 @@ type BroadeningDelegationWithKey struct {
 // the result of narrowing delegations. A single FullDelegation conveys
 // keys for a single Permission.
 type FullDelegation struct {
-	Broad  *BroadeningDelegation
-	Narrow []*BroadeningDelegationWithKey
-}
-
-func (fd *FullDelegation) Permissions() *Permission {
-	return fd.Broad.Delegation.Key.Permissions
+	Permissions *Permission
+	Broad       *BroadeningDelegation
+	Narrow      []*BroadeningDelegationWithKey
 }
 
 // DelegationBundle is a set of FullDelegations that are serialized together.
@@ -484,7 +481,7 @@ func DeriveKey(chain []*DelegationBundle, perm *Permission, me *EntitySecret) *D
 thinchain:
 	for i, bundle := range chain {
 		for _, deleg := range bundle.Delegations {
-			if deleg.Permissions().Contains(perm) {
+			if deleg.Permissions.Contains(perm) {
 				delegs[i] = deleg
 				continue thinchain
 			}
@@ -520,7 +517,7 @@ loop:
 		}
 		// Next, we must check if it's a "broadening" delegation that we can
 		// traverse.
-		if !deleg.Permissions().Contains(delegs[i-1].Permissions()) {
+		if deleg.Broad != nil && !deleg.Permissions.Contains(delegs[i-1].Permissions) {
 			// This is not a broadening link, so we have to give up
 			return nil
 		}
@@ -552,6 +549,9 @@ func PermissionRange(uri string, timeStart time.Time, timeEnd time.Time) ([]*Per
 // providing keys that are available right now.
 func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, perm *Permission) (*FullDelegation, error) {
 	fd := new(FullDelegation)
+	fd.Permissions = perm
+
+	gotExactKey := false
 
 	// Now, of the provided keys, check which ones can provide at least parts of
 	// the specified permissions.
@@ -564,6 +564,7 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 				return nil, err
 			}
 			fd.Narrow = []*BroadeningDelegationWithKey{nkey}
+			gotExactKey = true
 			break
 		} else if core.IsURIPrefix(kperm.URI, perm.URI) && core.IsTimePrefix(perm.Time, kperm.Time) {
 			// We can generate a partial key
@@ -588,10 +589,12 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 		}
 	}
 
-	var err error
-	fd.Broad, err = DelegateBroadening(random, hd, from, to, perm)
-	if err != nil {
-		return nil, err
+	if !gotExactKey {
+		var err error
+		fd.Broad, err = DelegateBroadening(random, hd, from, to, perm)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return fd, nil
