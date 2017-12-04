@@ -203,6 +203,37 @@ func TestNonDelegableKeyFromMaster(t *testing.T) {
 	decryptAndCheckHelper(t, key2, ciphertext, message)
 }
 
+func TestPartialDelegation(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := AttributeList{2: big.NewInt(4), 6: nil}
+	attrs2 := AttributeList{2: big.NewInt(4), 7: big.NewInt(123)}
+	attrs3 := AttributeList{2: big.NewInt(4), 6: big.NewInt(124)}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1)
+
+	// This should work fine
+	ciphertext := encryptHelper(t, params, attrs2, message)
+	key2 := qualifyHelper(t, params, key1, attrs2)
+	decryptAndCheckHelper(t, key2, ciphertext, message)
+
+	// This should not work, because slot 6 is hidden
+	ciphertext = encryptHelper(t, params, attrs3, message)
+	key3 := qualifyHelper(t, params, key1, attrs3)
+	decrypted := Decrypt(key3, ciphertext)
+	if bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+		t.Fatal("Managed to fill hidden slot")
+	}
+}
+
 func TestResampleKey(t *testing.T) {
 	// Set up parameters
 	params, masterkey, err := Setup(rand.Reader, 10)

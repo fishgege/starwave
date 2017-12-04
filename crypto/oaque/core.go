@@ -43,6 +43,15 @@ type AttributeIndex int
 
 // AttributeList represents a list of attributes. It is map from each set
 // attribute (by its index) to the value of that attribute.
+//
+// Mapping a slot to nil has special meaning when an AttributeList is passed
+// to KeyGen, QualifyKey, NonDelegableKeyFromMaster, or NonDelegableKey; the
+// slot will remain "free" but will be non-delegable. This can be used to
+// create partially delegable keys.
+//
+// However, a slot should not be mapped to nil when calling
+// PrepareAttributeSet(), Encrypt(), or Verify(). Doing so will likely cause
+// your program to crash.
 type AttributeList map[AttributeIndex]*big.Int
 
 // MaximumDepth returns the number of attributes supported. This was specified
@@ -168,6 +177,9 @@ func RandomInZp(random io.Reader) (*big.Int, error) {
 // be chosen uniformly at random, and represents the randomness to use to
 // generate the key. If left as nil, it will be generated using a cryptographic
 // random number generator.
+//
+// If a slot is mapped to nil in the attribute set, that slot is free in the new
+// private key, but cannot be filled in.
 func KeyGen(r *big.Int, params *Params, master *MasterKey, attrs AttributeList) (*PrivateKey, error) {
 	key := &PrivateKey{}
 	k := len(attrs)
@@ -189,8 +201,10 @@ func KeyGen(r *big.Int, params *Params, master *MasterKey, attrs AttributeList) 
 	for i, h := range params.H {
 		attrIndex := AttributeIndex(i)
 		if attr, ok := attrs[attrIndex]; ok {
-			hi := new(bn256.G1).ScalarMult(h, attr)
-			product.Add(product, hi)
+			if attr != nil {
+				hi := new(bn256.G1).ScalarMult(h, attr)
+				product.Add(product, hi)
+			}
 		} else {
 			key.B[j] = new(bn256.G1).ScalarMult(h, r)
 			key.FreeMap[attrIndex] = j
@@ -209,6 +223,9 @@ func KeyGen(r *big.Int, params *Params, master *MasterKey, attrs AttributeList) 
 // only be used for decryption or signing. This is significantly faster than
 // the regular KeyGen. However, the output should _not_ be delegated to another
 // entity, as it is not properly re-randomized and could leak the master key.
+//
+// If a slot is mapped to nil in the attribute set, that slot is free in the new
+// private key, but cannot be filled in.
 func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs AttributeList) *PrivateKey {
 	key := &PrivateKey{}
 	k := len(attrs)
@@ -221,8 +238,10 @@ func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs Attribut
 	for i, h := range params.H {
 		attrIndex := AttributeIndex(i)
 		if attr, ok := attrs[attrIndex]; ok {
-			hi := new(bn256.G1).ScalarMult(h, attr)
-			product.Add(product, hi)
+			if attr != nil {
+				hi := new(bn256.G1).ScalarMult(h, attr)
+				product.Add(product, hi)
+			}
 		} else {
 			key.B[j] = new(bn256.G1).Set(h)
 			key.FreeMap[attrIndex] = j
@@ -245,6 +264,9 @@ func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs Attribut
 // be chosen uniformly at random, and represents the randomness to use to
 // generate the new key. If left as nil, it will be generated using Go's
 // crypto/rand.
+//
+// If a slot is mapped to nil in the attribute set, that slot is free in the new
+// private key, but cannot be filled in.
 func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs AttributeList) (*PrivateKey, error) {
 	key := &PrivateKey{}
 	k := len(attrs)
@@ -267,21 +289,21 @@ func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs Attribute
 	for i, h := range params.H {
 		attrIndex := AttributeIndex(i)
 		if attr, ok := attrs[attrIndex]; ok {
-			hi := new(bn256.G1).ScalarMult(h, attr)
-			product.Add(product, hi)
-			if index, ok := qualify.FreeMap[attrIndex]; ok {
-				bi := new(bn256.G1).ScalarMult(qualify.B[index], attr)
-				key.A0.Add(key.A0, bi)
+			if attr != nil {
+				hi := new(bn256.G1).ScalarMult(h, attr)
+				product.Add(product, hi)
+				if index, ok := qualify.FreeMap[attrIndex]; ok {
+					bi := new(bn256.G1).ScalarMult(qualify.B[index], attr)
+					key.A0.Add(key.A0, bi)
+				}
 			}
 		} else {
 			key.B[j] = new(bn256.G1).ScalarMult(h, t)
-			bidx, ok := qualify.FreeMap[AttributeIndex(i)]
-			if !ok {
-				panic("Attributes are not a superset of those of provided key")
+			if bidx, ok := qualify.FreeMap[AttributeIndex(i)]; ok {
+				key.B[j].Add(qualify.B[bidx], key.B[j])
+				key.FreeMap[attrIndex] = j
+				j++
 			}
-			key.B[j].Add(qualify.B[bidx], key.B[j])
-			key.FreeMap[attrIndex] = j
-			j++
 		}
 	}
 	product.ScalarMult(product, t)
@@ -299,6 +321,9 @@ func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs Attribute
 // QualifyKey function. However, the output should _not_ be delegated to another
 // entity, as it is not properly re-randomized and could leak information about
 // the parent key.
+//
+// If a slot is mapped to nil in the attribute set, that slot is free in the new
+// private key, but cannot be filled in.
 func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *PrivateKey {
 	k := len(attrs)
 	l := len(params.H)
@@ -313,11 +338,12 @@ func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *
 
 	bIndex := 0
 	for attrIndex, idx := range qualify.FreeMap {
-		attr, ok := attrs[attrIndex]
-		if ok {
-			attrTerm := new(bn256.G1).Set(qualify.B[idx])
-			attrTerm.ScalarMult(attrTerm, attr)
-			key.A0.Add(key.A0, attrTerm)
+		if attr, ok := attrs[attrIndex]; ok {
+			if attr != nil {
+				attrTerm := new(bn256.G1).Set(qualify.B[idx])
+				attrTerm.ScalarMult(attrTerm, attr)
+				key.A0.Add(key.A0, attrTerm)
+			}
 		} else {
 			key.B[bIndex] = qualify.B[idx]
 			key.FreeMap[attrIndex] = bIndex
