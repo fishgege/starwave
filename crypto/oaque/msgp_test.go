@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"math/big"
-	"reflect"
 	"testing"
 
 	"github.com/tinylib/msgp/msgp"
@@ -75,7 +74,28 @@ func TestMsgpEncodings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(tm, readBack) {
-		t.Fatalf("unmarshalled deepEqual was not the same")
+
+	// Now, check whether the unmarshalled elements still work
+
+	// Decrypt ciphertext with key and check that it is correct
+	decrypted := Decrypt(tm.PrivateKey, tm.Ciphertext)
+	if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+		t.Fatal("Original and decrypted messages differ")
+	}
+
+	// Key generation from the master key
+	privkey2, err := KeyGen(nil, tm.Params, tm.MasterKey, attrs1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decrypted = Decrypt(privkey2, tm.Ciphertext)
+	if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+		t.Fatal("Original and decrypted messages differ")
+	}
+
+	// Verify the signature
+	correct := Verify(tm.Params, tm.SignatureParams, attrs1, tm.Signature, smessage)
+	if !correct {
+		t.Fatal("Signature was not successfully verified")
 	}
 }
