@@ -29,7 +29,7 @@ type SWClient struct {
 /* Some important utilities */
 
 func StartOfTime() time.Time {
-	t, err := time.Parse(time.RFC822Z, "01 Jan 15 00:00 +0000")
+	t, err := time.Parse(time.RFC822Z, "01 Jan 17 00:00 +0000")
 	if err != nil {
 		panic(err)
 	}
@@ -67,19 +67,55 @@ func getEntity(swc *SWClient, vk string) (*objects.Entity, error) {
 }
 
 func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain) ([]*starwave.DelegationBundle, error) {
-	ro, _, err := swc.ResolveRegistry(chain.Hash)
-	if err != nil {
-		return nil, err
-	}
-	fullchain := ro.(*objects.DChain)
-	bundles := make([]*starwave.DelegationBundle, fullchain.NumHashes())
+	numdots := len(chain.Content) >> 5
+	bundles := make([]*starwave.DelegationBundle, numdots)
 	for i := range bundles {
-		dot := fullchain.GetDOT(i)
+		dothash := chain.Content[i<<5 : (i<<5)+32]
+		ro, _, err := swc.ResolveRegistry(base64.URLEncoding.EncodeToString(dothash))
+		if err != nil {
+			return nil, err
+		}
+		dot := ro.(*objects.DOT)
 		bundles[i] = new(starwave.DelegationBundle)
+		if dot.GetComment() == "" {
+			fmt.Println("Got empty DOT")
+			return nil, err
+		} else {
+			fmt.Println("Got nonempty DOT")
+		}
 		success := bundles[i].Unmarshal([]byte(dot.GetComment()))
 		if !success {
 			return nil, fmt.Errorf("Invalid DelegationBundle at index %d of DoT Chain", i)
 		}
+
+		hdhash := base64.URLEncoding.EncodeToString(dot.GetAccessURIMVK())
+		giverhash := base64.URLEncoding.EncodeToString(dot.GetGiverVK())
+		receiverhash := base64.URLEncoding.EncodeToString(dot.GetReceiverVK())
+
+		ro, _, err = swc.ResolveRegistry(hdhash)
+		if err != nil {
+			return nil, err
+		}
+		nsauth := ro.(*objects.Entity)
+		ro, _, err = swc.ResolveRegistry(giverhash)
+		if err != nil {
+			return nil, err
+		}
+		giver := ro.(*objects.Entity)
+		ro, _, err = swc.ResolveRegistry(receiverhash)
+		if err != nil {
+			return nil, err
+		}
+		receiver := ro.(*objects.Entity)
+
+		hd := new(starwave.HierarchyDescriptor)
+		hd.Unmarshal([]byte(nsauth.GetComment()))
+		to := new(starwave.EntityDescriptor)
+		to.Unmarshal([]byte(giver.GetContact()))
+		from := new(starwave.EntityDescriptor)
+		from.Unmarshal([]byte(receiver.GetContact()))
+
+		bundles[i].Decompress(from, to, hd)
 	}
 	return bundles, nil
 }
@@ -178,7 +214,8 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 	p.ExpiryDelta = nil
 
-	/*expiry, err := time.Parse(time.RFC822Z, "01 Jan 18 00:00 +0000")
+	/*var err error
+	expiry, err = time.Parse(time.RFC822Z, "31 Dec 17 23:00 +0000")
 	if err != nil {
 		return "", nil, err
 	}*/
@@ -202,7 +239,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		chains, err := swc.BuildChain(p.URI, "C", swc.myvk)
 		for chain := range chains {
 			bundles, err := resolveChain(swc, chain)
-			if err != nil {
+			if bundles == nil || err != nil {
 				// Don't let one bad chain make the whole thing unusable
 				continue
 			}
@@ -262,9 +299,11 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	if err != nil {
 		return "", nil, err
 	}
+
+	db.Compress()
+
 	p.Comment = string(db.Marshal())
 
-	fmt.Println(len(db.Delegations))
 	fmt.Println(len(p.Comment))
 
 	// Now, actually make the DoT
@@ -377,8 +416,9 @@ func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*st
 	var key *starwave.DecryptionKey
 	chains, err := swc.BW2Client.BuildChain(fullURI, "C", swc.myvk)
 	for chain := range chains {
+		fmt.Println("Got a chain")
 		bundles, err := resolveChain(swc, chain)
-		if err != nil {
+		if bundles == nil || err != nil {
 			// Don't let one bad chain make the whole thing unusable
 			continue
 		}
@@ -410,9 +450,11 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 						// Need to get a decryptor
 						key, err := swc.obtainKey(namespace, perm)
 						if err != nil || key == nil {
+							fmt.Println("Could not obtain decryptor")
 							continue
 						}
 						decryptor = starwave.PrepareDecryption(perm, key)
+						cachedperm = perm
 					}
 					if decryptor != nil && perm.Equals(cachedperm) {
 						// Decrypt the PO
@@ -532,7 +574,7 @@ func extractSecretsFromEntity(entity []byte, unmarshalSecrets bool) ([]byte, *st
 		master := new(starwave.DecryptionKey)
 		success = master.Unmarshal(masterm)
 		if !success {
-			fmt.Println("Could not unmarshal hierarhcy secret")
+			fmt.Println("Could not unmarshal hierarchy secret")
 			return entity, es, nil
 		}
 

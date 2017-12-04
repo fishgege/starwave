@@ -105,6 +105,9 @@ func ParseTime(time time.Time) (TimePath, error) {
 	path[1] = uint16(time.Month())
 	path[3] = uint16(time.Day())
 	path[2] = (path[3]-1)/5 + 1
+	if path[2] == 7 {
+		path[2] = 6
+	}
 	path[5] = uint16(time.Hour())
 	path[4] = (path[5] / 6) + 1
 	return ParseTimeFromPath(path)

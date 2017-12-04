@@ -171,6 +171,35 @@ type DelegationBundle struct {
 	Delegations []*FullDelegation
 }
 
+// Compress elides information that could probably be obtained from
+// metadata included with the delegations: To, From, and Hierarchy fields
+func (db *DelegationBundle) Compress() {
+	for _, deleg := range db.Delegations {
+		if deleg.Broad != nil {
+			deleg.Broad.From = nil
+			deleg.Broad.To = nil
+		}
+		for _, narrow := range deleg.Narrow {
+			narrow.Hierarchy = nil
+			narrow.To = nil
+		}
+	}
+}
+
+// Decompress fills in fields that were elided.
+func (db *DelegationBundle) Decompress(from *EntityDescriptor, to *EntityDescriptor, hd *HierarchyDescriptor) {
+	for _, deleg := range db.Delegations {
+		if deleg.Broad != nil {
+			deleg.Broad.From = from
+			deleg.Broad.To = to
+		}
+		for _, narrow := range deleg.Narrow {
+			narrow.Hierarchy = hd
+			narrow.To = to
+		}
+	}
+}
+
 const (
 	// MaxURIDepth is the maximum depth of a URI in STARWAVE.
 	MaxURIDepth = core.MaxURILength
