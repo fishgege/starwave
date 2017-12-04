@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
 	"vuvuzela.io/crypto/bn256"
 )
 

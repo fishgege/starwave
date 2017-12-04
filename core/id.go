@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
+	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 /* ID Component Interface */

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/SoftwareDefinedBuildings/starwave/core"
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/core"
+	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 type MessageType byte

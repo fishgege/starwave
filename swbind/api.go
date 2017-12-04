@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SoftwareDefinedBuildings/starwave/starwave"
+	"github.com/ucbrise/starwave/starwave"
 	"github.com/immesys/bw2/objects"
 	"github.com/immesys/bw2bind"
 )

@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
+	"github.com/ucbrise/starwave/crypto/hibe"
 	"vuvuzela.io/crypto/bn256"
 )
 

@@ -6,7 +6,7 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
+	"github.com/ucbrise/starwave/crypto/hibe"
 	"golang.org/x/crypto/sha3"
 )
 
