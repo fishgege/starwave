@@ -11,6 +11,8 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/immesys/bw2/objects"
@@ -243,16 +245,6 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		return swc.BW2Client.CreateDOT(p)
 	}
 
-	panic("For DoTs providing read permissions in STARWAVE, you need to use CreateDOTArray")
-}
-
-func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte, []*objects.Entity, error) {
-	// Only subscribe DoTs change
-	if !strings.Contains(p.AccessPermissions, "C") {
-		vk, bin, err := swc.BW2Client.CreateDOT(p)
-		return vk, bin, []*objects.Entity{}, err
-	}
-
 	// Don't support ExpiryDelta
 	var expiry time.Time
 	if p.Expiry == nil {
@@ -278,7 +270,7 @@ func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte,
 	namespace, uri := extractNamespace(p.URI)
 	perms, err := starwave.PermissionRange(uri, StartOfTime(), expiry)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, err
 	}
 
 	// Now I need to figure out what keys I can include in the DoT
@@ -310,7 +302,7 @@ func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte,
 	// Get Hierarchy params
 	authority, err := getEntity(swc, namespace)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, err
 	}
 
 	fmt.Println("Got entity")
@@ -319,7 +311,7 @@ func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte,
 	success := hd.Unmarshal([]byte(authority.GetComment()))
 	fmt.Println("Finished call to Unmarshal")
 	if !success {
-		return "", nil, nil, errors.New("Invalid hierarchy descriptor in namespace authority")
+		return "", nil, errors.New("Invalid hierarchy descriptor in namespace authority")
 	}
 
 	fmt.Println("Got hierarchy parameters")
@@ -327,18 +319,18 @@ func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte,
 	// Get params of destination
 	to, err := getEntity(swc, p.To)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, err
 	}
 	ed := new(starwave.EntityDescriptor)
 	success = ed.Unmarshal([]byte(to.GetContact()))
 	if !success {
-		return "", nil, nil, errors.New("Invalid entity descriptor in destination entity")
+		return "", nil, errors.New("Invalid entity descriptor in destination entity")
 	}
 
 	// Perform the delegation
 	db, err := starwave.DelegateBundle(rand.Reader, hd, swc.mysecret, filteredkeys, ed, uri, StartOfTime(), expiry)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, err
 	}
 
 	fmt.Printf("There are %d keys\n", len(db.Delegations))
@@ -377,7 +369,7 @@ func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte,
 	for _, r := range p.Revokers {
 		rbytes, err := base64.URLEncoding.DecodeString(r)
 		if err != nil {
-			return "", nil, nil, err
+			return "", nil, err
 		}
 		d.AddRevoker(rbytes)
 	}
@@ -386,11 +378,27 @@ func (swc *SWClient) CreateDOTArray(p *bw2bind.CreateDOTParams) (string, []byte,
 	} else {
 		d.SetAccessURI(authority.GetVK(), uri)
 		if !d.SetPermString(p.AccessPermissions) {
-			return "", nil, nil, err
+			return "", nil, err
 		}
 	}
 	d.Encode(swc.myself.GetSK())
-	return base64.URLEncoding.EncodeToString(d.GetHash()), d.GetContent(), entities, nil
+
+	// OK, so I need to get the content, and then append all of the entities on
+	// to the end of it.
+	dotcontent := d.GetContent()
+
+	// Add the length of each entity, followed by the entity.
+	for _, entity := range entities {
+		entcontent := entity.GetContent()
+		entlength := len(entcontent)
+
+		lenbuf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(lenbuf, uint32(entlength))
+		dotcontent = append(dotcontent, lenbuf...)
+		dotcontent = append(dotcontent, entcontent...)
+	}
+
+	return base64.URLEncoding.EncodeToString(d.GetHash()), dotcontent, nil
 }
 
 /* Publishing messages. Need to make sure that POs are encrypted. */
@@ -690,6 +698,79 @@ func (swc *SWClient) PublishEntityWithAcc(blob []byte, account int) (string, err
 
 func (swc *SWClient) PublishEntity(blob []byte) (string, error) {
 	return swc.PublishEntityWithAcc(blob, 0)
+}
+
+func (swc *SWClient) PublishDOTWithAcc(blob []byte, account int) (string, error) {
+	// We need to publish the actual DoT, as well as any key-containing entities
+	// we may have appended to it
+
+	// Quickly parse the blob to get to the end of the actual DOT
+	index := 66
+	for blob[index] != 0 {
+		length := int(blob[index+1])
+		index += (2 + length)
+	}
+
+	// Now, index is the last byte of the DoT's RO header
+
+	// Skip one-byte "zero" at end of RO header
+	index += 1
+
+	// Skip two-byte permission encoding
+	index += 2
+
+	// Skip 32-byte MVK
+	index += 32
+
+	//fmt.Println(blob[index:])
+
+	// Skip URI
+	length := binary.LittleEndian.Uint16(blob[index : index+2])
+	index += (2 + int(length))
+
+	// Skip 64-byte signature
+	index += 64
+
+	// Now we at the end of the DoT
+	fmt.Println(index)
+	dot := blob[:index]
+	entities := blob[index:]
+
+	var aerr atomic.Value
+
+	wg := &sync.WaitGroup{}
+	// Publish each entity in a goroutine
+	for len(entities) != 0 {
+		entitylen := binary.LittleEndian.Uint32(entities[0:4])
+		entity := entities[4 : 4+entitylen]
+		entities = entities[4+entitylen:]
+
+		// Publish each entity at the end of the DOT
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			_, err := swc.BW2Client.PublishEntityWithAcc(entity, account)
+			if err != nil {
+				aerr.Store(err)
+			}
+		}()
+	}
+
+	// Finally, publish the actual DoT
+	hash, err := swc.BW2Client.PublishDOTWithAcc(dot, account)
+
+	// Wait for all publishing to complete
+	wg.Wait()
+
+	if terr := aerr.Load(); terr != nil {
+		return hash, terr.(error)
+	}
+	return hash, err
+}
+
+func (swc *SWClient) PublishDOT(blob []byte) (string, error) {
+	return swc.PublishDOTWithAcc(blob, 0)
 }
 
 /* Other functions */
