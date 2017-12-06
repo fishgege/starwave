@@ -3,7 +3,7 @@ package csroaque
 import (
 	"io"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/crypto/oaque"
 	"vuvuzela.io/crypto/bn256"
 )
 
@@ -14,8 +14,9 @@ type paramsNode struct {
 }
 
 type Params struct {
-	userSize *int
-	root     *paramsNode
+	userSize   *int
+	userHeight *int
+	root       *paramsNode
 }
 
 type masterKeyNode struct {

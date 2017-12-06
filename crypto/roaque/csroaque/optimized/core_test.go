@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/crypto/oaque"
 	"vuvuzela.io/crypto/bn256"
 )
 
@@ -16,7 +16,7 @@ func NewMessage() *bn256.GT {
 	return bn256.Pair(new(bn256.G1).ScalarBaseMult(big.NewInt(3)), new(bn256.G2).ScalarBaseMult(big.NewInt(5)))
 }
 
-func encryptHelper(t *testing.T, params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) CiphertextList {
+func encryptHelper(t *testing.T, params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) *Cipher {
 	ciphertext, err := Encrypt(params, attrs, revoc, message)
 	if err != nil {
 		t.Fatal(err)
@@ -41,14 +41,14 @@ func qualifyHelper(t *testing.T, params *Params, key *PrivateKey, attrs oaque.At
 	return key
 }
 
-func decryptAndCheckHelper(t *testing.T, params *Params, key *PrivateKey, ciphertext CiphertextList, message *bn256.GT) {
+func decryptAndCheckHelper(t *testing.T, params *Params, key *PrivateKey, ciphertext *Cipher, message *bn256.GT) {
 	decrypted := Decrypt(params, key, ciphertext)
 	if decrypted == nil || !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 		t.Fatal("Original and decrypted messages differ")
 	}
 }
 
-func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, ciphertext CiphertextList, message *bn256.GT) {
+func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, ciphertext *Cipher, message *bn256.GT) {
 	decrypted := Decrypt(params, key, ciphertext)
 	if decrypted == nil || !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 		return
