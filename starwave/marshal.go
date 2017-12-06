@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/SoftwareDefinedBuildings/starwave/core"
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/core"
+	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 type MessageType byte
@@ -456,7 +456,9 @@ func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
 		}
 		fd.Narrow[i] = new(BroadeningDelegationWithKey)
 		fd.Narrow[i].Key = key
-		fd.Narrow[i].To = fd.Broad.To
+		if fd.Broad != nil {
+			fd.Narrow[i].To = fd.Broad.To
+		}
 		fd.Narrow[i].Hierarchy = hierarchy
 	}
 

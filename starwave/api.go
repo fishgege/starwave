@@ -8,9 +8,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/SoftwareDefinedBuildings/starwave/core"
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/core"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
+	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 // HierarchyDescriptor is the public information representing a hierarchy.
@@ -173,30 +173,41 @@ type DelegationBundle struct {
 
 // Compress elides information that could probably be obtained from
 // metadata included with the delegations: To, From, and Hierarchy fields
+func (deleg *FullDelegation) Compress() {
+	if deleg.Broad != nil {
+		deleg.Broad.From = nil
+		deleg.Broad.To = nil
+	}
+	for _, narrow := range deleg.Narrow {
+		narrow.Hierarchy = nil
+		narrow.To = nil
+	}
+}
+
+// Decompress fills in fields that were elided.
+func (deleg *FullDelegation) Decompress(from *EntityDescriptor, to *EntityDescriptor, hd *HierarchyDescriptor) {
+	if deleg.Broad != nil {
+		deleg.Broad.From = from
+		deleg.Broad.To = to
+	}
+	for _, narrow := range deleg.Narrow {
+		narrow.Hierarchy = hd
+		narrow.To = to
+	}
+}
+
+// Compress elides information that could probably be obtained from
+// metadata included with the delegations: To, From, and Hierarchy fields
 func (db *DelegationBundle) Compress() {
 	for _, deleg := range db.Delegations {
-		if deleg.Broad != nil {
-			deleg.Broad.From = nil
-			deleg.Broad.To = nil
-		}
-		for _, narrow := range deleg.Narrow {
-			narrow.Hierarchy = nil
-			narrow.To = nil
-		}
+		deleg.Compress()
 	}
 }
 
 // Decompress fills in fields that were elided.
 func (db *DelegationBundle) Decompress(from *EntityDescriptor, to *EntityDescriptor, hd *HierarchyDescriptor) {
 	for _, deleg := range db.Delegations {
-		if deleg.Broad != nil {
-			deleg.Broad.From = from
-			deleg.Broad.To = to
-		}
-		for _, narrow := range deleg.Narrow {
-			narrow.Hierarchy = hd
-			narrow.To = to
-		}
+		deleg.Decompress(from, to, hd)
 	}
 }
 

@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 type EntitySystem struct {

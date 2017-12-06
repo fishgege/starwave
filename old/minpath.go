@@ -3,7 +3,7 @@ package core
 import (
 	"crypto/rand"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/oaque"
+	"github.com/ucbrise/starwave/crypto/oaque"
 	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 )
 

@@ -11,11 +11,13 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/SoftwareDefinedBuildings/starwave/starwave"
 	"github.com/immesys/bw2/objects"
 	"github.com/immesys/bw2bind"
+	"github.com/ucbrise/starwave/starwave"
 )
 
 type SWClient struct {
@@ -25,6 +27,8 @@ type SWClient struct {
 	mysecret *starwave.EntitySecret
 	nskey    *starwave.DecryptionKey
 }
+
+var dotnonce = []byte{0xae, 0x30, 0x35, 0xd7, 0xcc, 0xdb, 0xe1, 0xae}
 
 /* Some important utilities */
 
@@ -66,7 +70,7 @@ func getEntity(swc *SWClient, vk string) (*objects.Entity, error) {
 	return entity, nil
 }
 
-func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain) ([]*starwave.DelegationBundle, error) {
+func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain, perm *starwave.Permission) ([]*starwave.DelegationBundle, error) {
 	numdots := len(chain.Content) >> 5
 	bundles := make([]*starwave.DelegationBundle, numdots)
 	for i := range bundles {
@@ -76,17 +80,59 @@ func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain) ([]*starwave.Delega
 			return nil, err
 		}
 		dot := ro.(*objects.DOT)
-		bundles[i] = new(starwave.DelegationBundle)
 		if dot.GetComment() == "" {
 			fmt.Println("Got empty DOT")
 			return nil, err
 		} else {
-			fmt.Println("Got nonempty DOT")
+			fmt.Printf("Looking at DOT #%d\n", i)
 		}
-		success := bundles[i].Unmarshal([]byte(dot.GetComment()))
-		if !success {
+		// Each DelegationBundle will contain the single FullDelegation with
+		// permissions that could possibly match.
+		dotdata := []byte(dot.GetComment())
+		if len(dotdata) < 24 || !bytes.Equal(dotdata[0:8], dotnonce) {
 			return nil, fmt.Errorf("Invalid DelegationBundle at index %d of DoT Chain", i)
 		}
+
+		//fmt.Printf("DelegationBundle is valid (%d of %d)\n", i, len(bundles))
+		starttime := time.Unix(0, int64(binary.LittleEndian.Uint64(dotdata[8:16])))
+		endtime := time.Unix(0, int64(binary.LittleEndian.Uint64(dotdata[16:24])))
+		perms, err := starwave.PermissionRange(perm.URI.String(), starttime, endtime)
+		if err != nil {
+			panic(err)
+		}
+
+		correctIndex := -1
+		fmt.Printf("Identifying index for time %s\n", perm.Time.String())
+		for j, entperm := range perms {
+			fmt.Printf("Found time %s\n", entperm.Time.String())
+			if entperm.Contains(perm) {
+				correctIndex = j
+				break
+			}
+		}
+		if correctIndex == -1 {
+			// This DoT isn't useful
+			fmt.Printf("DoT at index %d didn't contain a delegation with the necessary permissions\n", i)
+			return nil, fmt.Errorf("DoT at index %d didn't contain a delegation with the necessary permissions", i)
+		}
+
+		enthashidx := 24 + (correctIndex << 5)
+		enthash := dotdata[enthashidx : enthashidx+32]
+
+		ro, _, err = swc.ResolveRegistry(base64.URLEncoding.EncodeToString(enthash))
+		if err != nil {
+			return nil, err
+		}
+		ent := ro.(*objects.Entity)
+
+		bundles[i] = new(starwave.DelegationBundle)
+		bundles[i].Delegations = []*starwave.FullDelegation{new(starwave.FullDelegation)}
+		success := bundles[i].Delegations[0].Unmarshal([]byte(ent.GetComment()))
+		if !success {
+			fmt.Println("Unmarshalling of entity comment failed...")
+			return nil, fmt.Errorf("Invalid DelegationBundle at index %d of DoT Chain", i)
+		}
+		fmt.Printf("This contains %d keys\n", len(bundles[i].Delegations[0].Narrow))
 
 		hdhash := base64.URLEncoding.EncodeToString(dot.GetAccessURIMVK())
 		giverhash := base64.URLEncoding.EncodeToString(dot.GetGiverVK())
@@ -117,6 +163,7 @@ func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain) ([]*starwave.Delega
 
 		bundles[i].Decompress(from, to, hd)
 	}
+
 	return bundles, nil
 }
 
@@ -236,23 +283,11 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	} else {
 		fmt.Println("I am not the namespace authority")
 		keys = make([]*starwave.DecryptionKey, len(perms))
-		chains, err := swc.BuildChain(p.URI, "C", swc.myvk)
-		for chain := range chains {
-			bundles, err := resolveChain(swc, chain)
-			if bundles == nil || err != nil {
-				// Don't let one bad chain make the whole thing unusable
-				continue
+		for i, perm := range perms {
+			key, err := swc.obtainKey(namespace, perm)
+			if err == nil {
+				keys[i] = key
 			}
-			for i, perm := range perms {
-				if keys[i] != nil {
-					fmt.Printf("Derived key for URI %s and Time %s\n", perm.URI.String(), perm.Time.String())
-					keys[i] = starwave.DeriveKey(bundles, perm, swc.mysecret)
-				}
-			}
-			// TODO: Also include partially overlapping keys
-		}
-		if err != nil {
-			return "", nil, err
 		}
 	}
 
@@ -263,8 +298,6 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 			filteredkeys = append(filteredkeys, key)
 		}
 	}
-
-	fmt.Println("Filtered out nil keys")
 
 	// Get Hierarchy params
 	authority, err := getEntity(swc, namespace)
@@ -300,10 +333,24 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		return "", nil, err
 	}
 
+	fmt.Printf("There are %d keys\n", len(db.Delegations))
+
 	db.Compress()
 
-	p.Comment = string(db.Marshal())
+	dotdata := make([]byte, 24, 16+(len(db.Delegations)<<5))
 
+	copy(dotdata[0:8], dotnonce)
+	binary.LittleEndian.PutUint64(dotdata[8:16], uint64(StartOfTime().UnixNano()))
+	binary.LittleEndian.PutUint64(dotdata[16:24], uint64(expiry.UnixNano()))
+	entities := make([]*objects.Entity, len(db.Delegations))
+	for i, deleg := range db.Delegations {
+		comment := string(deleg.Marshal())
+		entities[i] = objects.CreateNewEntity("", comment, nil)
+		vk := entities[i].GetVK()
+		dotdata = append(dotdata, vk...)
+	}
+
+	p.Comment = string(dotdata)
 	fmt.Println(len(p.Comment))
 
 	// Now, actually make the DoT
@@ -335,7 +382,23 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		}
 	}
 	d.Encode(swc.myself.GetSK())
-	return base64.URLEncoding.EncodeToString(d.GetHash()), d.GetContent(), nil
+
+	// OK, so I need to get the content, and then append all of the entities on
+	// to the end of it.
+	dotcontent := d.GetContent()
+
+	// Add the length of each entity, followed by the entity.
+	for _, entity := range entities {
+		entcontent := entity.GetContent()
+		entlength := len(entcontent)
+
+		lenbuf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(lenbuf, uint32(entlength))
+		dotcontent = append(dotcontent, lenbuf...)
+		dotcontent = append(dotcontent, entcontent...)
+	}
+
+	return base64.URLEncoding.EncodeToString(d.GetHash()), dotcontent, nil
 }
 
 /* Publishing messages. Need to make sure that POs are encrypted. */
@@ -417,7 +480,7 @@ func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*st
 	chains, err := swc.BW2Client.BuildChain(fullURI, "C", swc.myvk)
 	for chain := range chains {
 		fmt.Println("Got a chain")
-		bundles, err := resolveChain(swc, chain)
+		bundles, err := resolveChain(swc, chain, perm)
 		if bundles == nil || err != nil {
 			// Don't let one bad chain make the whole thing unusable
 			continue
@@ -426,6 +489,11 @@ func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*st
 		if key != nil {
 			break
 		}
+		fmt.Println(bundles[0].Delegations[0].Narrow[0].Key.Key.Permissions.URI)
+		fmt.Println(bundles[0].Delegations[0].Narrow[0].Key.Key.Permissions.Time)
+		fmt.Println(perm.URI)
+		fmt.Println(perm.Time)
+		fmt.Println("Couldn't derive key from bundles")
 	}
 	if err != nil && key == nil {
 		return nil, err
@@ -630,6 +698,79 @@ func (swc *SWClient) PublishEntityWithAcc(blob []byte, account int) (string, err
 
 func (swc *SWClient) PublishEntity(blob []byte) (string, error) {
 	return swc.PublishEntityWithAcc(blob, 0)
+}
+
+func (swc *SWClient) PublishDOTWithAcc(blob []byte, account int) (string, error) {
+	// We need to publish the actual DoT, as well as any key-containing entities
+	// we may have appended to it
+
+	// Quickly parse the blob to get to the end of the actual DOT
+	index := 66
+	for blob[index] != 0 {
+		length := int(blob[index+1])
+		index += (2 + length)
+	}
+
+	// Now, index is the last byte of the DoT's RO header
+
+	// Skip one-byte "zero" at end of RO header
+	index += 1
+
+	// Skip two-byte permission encoding
+	index += 2
+
+	// Skip 32-byte MVK
+	index += 32
+
+	//fmt.Println(blob[index:])
+
+	// Skip URI
+	length := binary.LittleEndian.Uint16(blob[index : index+2])
+	index += (2 + int(length))
+
+	// Skip 64-byte signature
+	index += 64
+
+	// Now we at the end of the DoT
+	fmt.Println(index)
+	dot := blob[:index]
+	entities := blob[index:]
+
+	var aerr atomic.Value
+
+	wg := &sync.WaitGroup{}
+	// Publish each entity in a goroutine
+	for len(entities) != 0 {
+		entitylen := binary.LittleEndian.Uint32(entities[0:4])
+		entity := entities[4 : 4+entitylen]
+		entities = entities[4+entitylen:]
+
+		// Publish each entity at the end of the DOT
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			_, err := swc.BW2Client.PublishEntityWithAcc(entity, account)
+			if err != nil {
+				aerr.Store(err)
+			}
+		}()
+	}
+
+	// Finally, publish the actual DoT
+	hash, err := swc.BW2Client.PublishDOTWithAcc(dot, account)
+
+	// Wait for all publishing to complete
+	wg.Wait()
+
+	if terr := aerr.Load(); terr != nil {
+		return hash, terr.(error)
+	}
+	return hash, err
+}
+
+func (swc *SWClient) PublishDOT(blob []byte) (string, error) {
+	return swc.PublishDOTWithAcc(blob, 0)
 }
 
 /* Other functions */

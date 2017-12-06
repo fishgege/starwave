@@ -9,7 +9,7 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
 	"vuvuzela.io/crypto/bn256"
 )
 

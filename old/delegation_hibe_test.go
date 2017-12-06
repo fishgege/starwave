@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/cryptutils"
-	"github.com/SoftwareDefinedBuildings/starwave/crypto/hibe"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
+	"github.com/ucbrise/starwave/crypto/hibe"
 )
 
 func generateTopLevel() (*hibe.Params, *hibe.PrivateKey) {
