@@ -7,7 +7,8 @@ import (
 	"math/big"
 	"testing"
 
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
 )
 
 func NewMessage() *bn256.GT {
@@ -125,11 +126,11 @@ func TestDecryptSpecific(t *testing.T) {
 }
 
 func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
-	_, g1, err := bn256.RandomG1(random)
+	_, g1, err := cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, err
 	}
-	_, g2, err := bn256.RandomG2(random)
+	_, g2, err := cryptutils.RandomG2(random)
 	if err != nil {
 		return nil, err
 	}

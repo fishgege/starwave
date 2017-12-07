@@ -5,18 +5,18 @@ import (
 	"math/big"
 	"testing"
 
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
 
 func BenchmarkG1Add(b *testing.B) {
 	b.StopTimer()
 
-	_, g, err := bn256.RandomG1(rand.Reader)
+	_, g, err := RandomG1(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	_, h, err := bn256.RandomG1(rand.Reader)
+	_, h, err := RandomG1(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -30,12 +30,12 @@ func BenchmarkG1Add(b *testing.B) {
 func BenchmarkG2Add(b *testing.B) {
 	b.StopTimer()
 
-	_, g, err := bn256.RandomG2(rand.Reader)
+	_, g, err := RandomG2(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	_, h, err := bn256.RandomG2(rand.Reader)
+	_, h, err := RandomG2(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -49,24 +49,24 @@ func BenchmarkG2Add(b *testing.B) {
 func BenchmarkGTAdd(b *testing.B) {
 	b.StopTimer()
 
-	_, g1, err := bn256.RandomG1(rand.Reader)
+	_, g1, err := RandomG1(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	_, g2, err := bn256.RandomG2(rand.Reader)
+	_, g2, err := RandomG2(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	g := bn256.Pair(g1, g2)
 
-	_, h1, err := bn256.RandomG1(rand.Reader)
+	_, h1, err := RandomG1(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	_, h2, err := bn256.RandomG2(rand.Reader)
+	_, h2, err := RandomG2(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func BenchmarkG1ScalarMult(b *testing.B) {
 	b.StopTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, g, err := bn256.RandomG1(rand.Reader)
+		_, g, err := RandomG1(rand.Reader)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -103,7 +103,7 @@ func BenchmarkG2ScalarMult(b *testing.B) {
 	b.StopTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, g, err := bn256.RandomG2(rand.Reader)
+		_, g, err := RandomG2(rand.Reader)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -123,12 +123,12 @@ func BenchmarkGTScalarMult(b *testing.B) {
 	b.StopTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, g1, err := bn256.RandomG1(rand.Reader)
+		_, g1, err := RandomG1(rand.Reader)
 		if err != nil {
 			b.Fatal(err)
 		}
 
-		_, g2, err := bn256.RandomG2(rand.Reader)
+		_, g2, err := RandomG2(rand.Reader)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -150,12 +150,12 @@ func BenchmarkPair(b *testing.B) {
 	b.StopTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, g1, err := bn256.RandomG1(rand.Reader)
+		_, g1, err := RandomG1(rand.Reader)
 		if err != nil {
 			b.Fatal(err)
 		}
 
-		_, g2, err := bn256.RandomG2(rand.Reader)
+		_, g2, err := RandomG2(rand.Reader)
 		if err != nil {
 			b.Fatal(err)
 		}

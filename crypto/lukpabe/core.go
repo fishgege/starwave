@@ -10,7 +10,7 @@ import (
 	"math/big"
 
 	"github.com/ucbrise/starwave/crypto/cryptutils"
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
 
 // Params represents the system parameters for an LU KP-ABE cryptosystem.
@@ -172,19 +172,19 @@ func Setup(random io.Reader, n int) (*Params, MasterKey, error) {
 
 	var err error
 	var y *big.Int
-	y, params.G1, err = bn256.RandomG2(random)
+	y, params.G1, err = cryptutils.RandomG2(random)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	_, params.G2, err = bn256.RandomG1(random)
+	_, params.G2, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	params.Ts = make([]*bn256.G1, n+1)
 	for i := range params.Ts {
-		_, params.Ts[i], err = bn256.RandomG1(random)
+		_, params.Ts[i], err = cryptutils.RandomG1(random)
 		if err != nil {
 			return nil, nil, err
 		}

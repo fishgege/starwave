@@ -10,7 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
 )
 
 // Params represents the system parameters for an OAQUE cryptosystem.
@@ -107,7 +108,7 @@ func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
 	// The algorithm technically needs g to be a generator of G, but since G is
 	// isomorphic to Zp, any element in G is technically a generator. So, we
 	// just choose a random element.
-	_, params.G, err = bn256.RandomG2(random)
+	_, params.G, err = cryptutils.RandomG2(random)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -122,11 +123,11 @@ func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
 	params.G1 = new(bn256.G2).ScalarMult(params.G, alpha)
 
 	// Randomly choose g2 and g3.
-	_, params.G2, err = bn256.RandomG1(random)
+	_, params.G2, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, nil, err
 	}
-	_, params.G3, err = bn256.RandomG1(random)
+	_, params.G3, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -134,7 +135,7 @@ func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
 	// Randomly choose h1 ... hl.
 	params.H = make([]*bn256.G1, l, l)
 	for i := range params.H {
-		_, params.H[i], err = bn256.RandomG1(random)
+		_, params.H[i], err = cryptutils.RandomG1(random)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -152,12 +153,12 @@ func SignatureSetup(random io.Reader) (*SignatureParams, error) {
 	params := new(SignatureParams)
 	var err error
 
-	_, params.U0, err = bn256.RandomG1(random)
+	_, params.U0, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, err
 	}
 
-	_, params.U1, err = bn256.RandomG1(random)
+	_, params.U1, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +195,8 @@ func KeyGen(r *big.Int, params *Params, master *MasterKey, attrs AttributeList) 
 		}
 	}
 
-	product := new(bn256.G1).Set(params.G3)
+	product := new(bn256.G1)
+	*product = *params.G3
 	key.B = make([]*bn256.G1, l-k)
 	key.FreeMap = make(map[AttributeIndex]int)
 	j := 0
@@ -231,7 +233,8 @@ func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs Attribut
 	k := len(attrs)
 	l := len(params.H)
 
-	product := new(bn256.G1).Set(params.G3)
+	product := new(bn256.G1)
+	*product = *params.G3
 	key.B = make([]*bn256.G1, l-k)
 	key.FreeMap = make(map[AttributeIndex]int)
 	j := 0
@@ -243,14 +246,16 @@ func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs Attribut
 				product.Add(product, hi)
 			}
 		} else {
-			key.B[j] = new(bn256.G1).Set(h)
+			key.B[j] = new(bn256.G1)
+			*key.B[j] = *h
 			key.FreeMap[attrIndex] = j
 			j++
 		}
 	}
 
 	key.A0 = new(bn256.G1).Add((*bn256.G1)(master), product)
-	key.A1 = new(bn256.G2).Set(params.G)
+	key.A1 = new(bn256.G2)
+	*key.A1 = *params.G
 
 	return key
 }
@@ -281,8 +286,10 @@ func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs Attribute
 		}
 	}
 
-	key.A0 = new(bn256.G1).Set(qualify.A0)
-	product := new(bn256.G1).Set(params.G3)
+	key.A0 = new(bn256.G1)
+	*key.A0 = *qualify.A0
+	product := new(bn256.G1)
+	*product = *params.G3
 	key.B = make([]*bn256.G1, l-k)
 	key.FreeMap = make(map[AttributeIndex]int)
 	j := 0
@@ -334,13 +341,14 @@ func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *
 		FreeMap: make(map[AttributeIndex]int),
 	}
 
-	key.A0.Set(qualify.A0)
+	*key.A0 = *qualify.A0
 
 	bIndex := 0
 	for attrIndex, idx := range qualify.FreeMap {
 		if attr, ok := attrs[attrIndex]; ok {
 			if attr != nil {
-				attrTerm := new(bn256.G1).Set(qualify.B[idx])
+				attrTerm := new(bn256.G1)
+				*attrTerm = *qualify.B[idx]
 				attrTerm.ScalarMult(attrTerm, attr)
 				key.A0.Add(key.A0, attrTerm)
 			}
@@ -426,7 +434,8 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT)
 // be useful if you are repeatedly encrypting messages or verifying signatures
 // with the same attribute list and want to speed things up.
 func PrepareAttributeSet(params *Params, attrs AttributeList) *PreparedAttributeList {
-	c := new(bn256.G1).Set(params.G3)
+	c := new(bn256.G1)
+	*c = *params.G3
 	for attrIndex, attr := range attrs {
 		h := new(bn256.G1).ScalarMult(params.H[attrIndex], attr)
 		c.Add(c, h)

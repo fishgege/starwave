@@ -1,7 +1,7 @@
 package oaque
 
 import (
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
 
 // geSize is the base size in bytes of a marshalled group element. The size of

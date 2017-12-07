@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
 
 func IDToInts(id []string) []*big.Int {
