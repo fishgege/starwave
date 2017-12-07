@@ -182,6 +182,28 @@ func TestNonDelegableKey(t *testing.T) {
 	decryptAndCheckHelper(t, key2, ciphertext, message)
 }
 
+func TestDecryptWithMaster(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs2 := AttributeList{2: big.NewInt(4), 7: big.NewInt(123)}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, message)
+
+	// Generate key in two steps
+	decrypted := DecryptWithMaster(masterkey, ciphertext)
+	if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+		t.Fatal("Original and decrypted messages differ")
+	}
+}
+
 func TestNonDelegableKeyFromMaster(t *testing.T) {
 	// Set up parameters
 	params, masterkey, err := Setup(rand.Reader, 10)
@@ -505,6 +527,60 @@ func BenchmarkDecrypt_15(b *testing.B) {
 
 func BenchmarkDecrypt_20(b *testing.B) {
 	DecryptBenchmarkHelper(b, 20)
+}
+
+func DecryptWithMasterBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, master, err := Setup(rand.Reader, 20)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		message, err := NewRandomMessage(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		ciphertext, err := Encrypt(nil, params, attrs, message)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		decrypted := DecryptWithMaster(master, ciphertext)
+		b.StopTimer()
+
+		if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+			b.Fatal("Original and decrypted messages differ")
+		}
+	}
+}
+
+func BenchmarkDecryptWithMaster_5(b *testing.B) {
+	DecryptWithMasterBenchmarkHelper(b, 5)
+}
+
+func BenchmarkDecryptWithMaster_10(b *testing.B) {
+	DecryptWithMasterBenchmarkHelper(b, 10)
+}
+
+func BenchmarkDecryptWithMaster_15(b *testing.B) {
+	DecryptWithMasterBenchmarkHelper(b, 15)
+}
+
+func BenchmarkDecryptWithMaster_20(b *testing.B) {
+	DecryptWithMasterBenchmarkHelper(b, 20)
 }
 
 func NonDelegableKeyBenchmarkHelper(b *testing.B, numAttributes int) {
