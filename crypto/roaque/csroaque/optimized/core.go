@@ -6,7 +6,7 @@ import (
 	"math/big"
 
 	"github.com/ucbrise/starwave/crypto/oaque"
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
 
 type Params struct {

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/ucbrise/starwave/crypto/cryptutils"
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
 
 var ID = []string{"a", "b", "c"}

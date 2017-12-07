@@ -7,7 +7,8 @@ import (
 	"math/big"
 	"testing"
 
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
 )
 
 var LINEAR_HIERARCHY = []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
@@ -17,11 +18,11 @@ func NewMessage() *bn256.GT {
 }
 
 func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
-	_, g1, err := bn256.RandomG1(random)
+	_, g1, err := cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, err
 	}
-	_, g2, err := bn256.RandomG2(random)
+	_, g2, err := cryptutils.RandomG2(random)
 	if err != nil {
 		return nil, err
 	}
@@ -750,7 +751,8 @@ func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
 		b.StartTimer()
 		params.Precache()
 		lhs := bn256.Pair(signature.A0, params.G)
-		c := new(bn256.G1).Set(params.G3)
+		c := new(bn256.G1)
+		*c = *params.G3
 		for attrIndex, attr := range id {
 			h := new(bn256.G1).ScalarMult(params.H[attrIndex], attr)
 			c.Add(c, h)

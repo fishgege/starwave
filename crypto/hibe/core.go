@@ -48,7 +48,8 @@ import (
 	"io"
 	"math/big"
 
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
+	"github.com/ucbrise/starwave/crypto/cryptutils"
 )
 
 // Params represents the system parameters for a hierarchy.
@@ -105,7 +106,7 @@ func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
 	// The algorithm technically needs g to be a generator of G, but since G is
 	// isomorphic to Zp, any element in G is technically a generator. So, we
 	// just choose a random element.
-	_, params.G, err = bn256.RandomG2(random)
+	_, params.G, err = cryptutils.RandomG2(random)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -120,11 +121,11 @@ func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
 	params.G1 = new(bn256.G2).ScalarMult(params.G, alpha)
 
 	// Randomly choose g2 and g3.
-	_, params.G2, err = bn256.RandomG1(random)
+	_, params.G2, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, nil, err
 	}
-	_, params.G3, err = bn256.RandomG1(random)
+	_, params.G3, err = cryptutils.RandomG1(random)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -132,7 +133,7 @@ func Setup(random io.Reader, l int) (*Params, MasterKey, error) {
 	// Randomly choose h1 ... hl.
 	params.H = make([]*bn256.G1, l, l)
 	for i := range params.H {
-		_, params.H[i], err = bn256.RandomG1(random)
+		_, params.H[i], err = cryptutils.RandomG1(random)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -159,7 +160,8 @@ func KeyGen(random io.Reader, params *Params, master MasterKey, id []*big.Int) (
 		return nil, err
 	}
 
-	product := new(bn256.G1).Set(params.G3)
+	product := new(bn256.G1)
+	*product = *params.G3
 	for i := 0; i != k; i++ {
 		h := new(bn256.G1).ScalarMult(params.H[i], id[i])
 		product.Add(product, h)
@@ -187,17 +189,20 @@ func NonDelegableKeyFromMaster(params *Params, master MasterKey, id []*big.Int) 
 		panic("Cannot generate key at greater than maximum depth.")
 	}
 
-	product := new(bn256.G1).Set(params.G3)
+	product := new(bn256.G1)
+	*product = *params.G3
 	for i := 0; i != k; i++ {
 		h := new(bn256.G1).ScalarMult(params.H[i], id[i])
 		product.Add(product, h)
 	}
 
 	key.A0 = new(bn256.G1).Add(master, product)
-	key.A1 = new(bn256.G2).Set(params.G)
+	key.A1 = new(bn256.G2)
+	*key.A1 = *params.G
 	key.B = make([]*bn256.G1, l-k)
 	for j := 0; j != l-k; j++ {
-		key.B[j] = new(bn256.G1).Set(params.H[k+j])
+		key.B[j] = new(bn256.G1)
+		*key.B[j] = *params.H[k+j]
 	}
 
 	return key
@@ -220,7 +225,8 @@ func QualifyKey(random io.Reader, params *Params, ancestor *PrivateKey, id []*bi
 		return nil, err
 	}
 
-	product := new(bn256.G1).Set(params.G3)
+	product := new(bn256.G1)
+	*product = *params.G3
 	for i := 0; i != k; i++ {
 		h := new(bn256.G1).ScalarMult(params.H[i], id[i])
 		product.Add(product, h)
@@ -263,7 +269,8 @@ func NonDelegableKey(params *Params, ancestor *PrivateKey, id []*big.Int) (*Priv
 		panic("Cannot generate key at greater than maximum depth")
 	}
 
-	key.A0 = new(bn256.G1).Set(ancestor.A0)
+	key.A0 = new(bn256.G1)
+	*key.A0 = *ancestor.A0
 
 	newterms := k + ancestor.DepthLeft() - l
 	for j := 0; j != newterms; j++ {
@@ -309,7 +316,8 @@ func Encrypt(random io.Reader, params *Params, id []*big.Int, message *bn256.GT)
 
 	ciphertext.B = new(bn256.G2).ScalarMult(params.G, s)
 
-	ciphertext.C = new(bn256.G1).Set(params.G3)
+	ciphertext.C = new(bn256.G1)
+	*ciphertext.C = *params.G3
 	for i := 0; i != k; i++ {
 		h := new(bn256.G1).ScalarMult(params.H[i], id[i])
 		ciphertext.C.Add(ciphertext.C, h)

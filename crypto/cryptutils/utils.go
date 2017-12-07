@@ -4,10 +4,27 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"math/big"
+	"io"
 
 	"golang.org/x/crypto/sha3"
-	"vuvuzela.io/crypto/bn256"
+	"github.com/asimshankar/bn256"
 )
+
+func RandomG1(random io.Reader) (*big.Int, *bn256.G1, error) {
+	s, err := rand.Int(random, bn256.Order)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s, new(bn256.G1).ScalarBaseMult(s), nil
+}
+
+func RandomG2(random io.Reader) (*big.Int, *bn256.G2, error) {
+	s, err := rand.Int(random, bn256.Order)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s, new(bn256.G2).ScalarBaseMult(s), nil
+}
 
 // HashToZp hashes a byte slice to an integer in Zp*.
 func HashToZp(bytestring []byte) *big.Int {
