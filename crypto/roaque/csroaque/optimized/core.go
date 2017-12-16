@@ -1,4 +1,4 @@
-package csroaque
+package csroaque_opt
 
 import (
 	"io"
@@ -43,7 +43,8 @@ type CiphertextList []*Ciphertext
 
 type Cipher struct {
 	cipherlist CiphertextList
-	attrs      oaque.AttributeList
+	// TODO: attrs in cipher or in private key
+	attrs oaque.AttributeList
 }
 
 // Setup generates the system parameters, which may be made visible to an

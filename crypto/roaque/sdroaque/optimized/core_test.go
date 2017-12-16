@@ -1,4 +1,4 @@
-package csroaque_opt
+package sdroaque_opt
 
 import (
 	"bytes"
@@ -17,11 +17,11 @@ func NewMessage() *bn256.GT {
 }
 
 func encryptHelper(t *testing.T, params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) *Cipher {
-	ciphertext, err := Encrypt(params, attrs, revoc, message)
+	cipher, err := Encrypt(params, attrs, revoc, message)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ciphertext
+	return cipher
 }
 
 func genFromMasterHelper(t *testing.T, params *Params, masterkey *MasterKey, attrs oaque.AttributeList, userNum int, newUser int) *PrivateKey {
@@ -41,15 +41,15 @@ func qualifyHelper(t *testing.T, params *Params, key *PrivateKey, attrs oaque.At
 	return key
 }
 
-func decryptAndCheckHelper(t *testing.T, params *Params, key *PrivateKey, ciphertext *Cipher, message *bn256.GT) {
-	decrypted := Decrypt(params, key, ciphertext)
+func decryptAndCheckHelper(t *testing.T, params *Params, key *PrivateKey, cipher *Cipher, message *bn256.GT) {
+	decrypted := Decrypt(params, key, cipher)
 	if decrypted == nil || !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 		t.Fatal("Original and decrypted messages differ")
 	}
 }
 
-func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, ciphertext *Cipher, message *bn256.GT) {
-	decrypted := Decrypt(params, key, ciphertext)
+func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, cipher *Cipher, message *bn256.GT) {
+	decrypted := Decrypt(params, key, cipher)
 	if decrypted == nil || !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 		return
 	}
@@ -76,15 +76,15 @@ func attributeFromMasterHelper(t *testing.T, attrs oaque.AttributeList, revoc Re
 }
 
 func TestSingleAttribute(t *testing.T) {
-	attributeFromMasterHelper(t, oaque.AttributeList{0: big.NewInt(0)}, RevocationList{0: 0})
+	attributeFromMasterHelper(t, oaque.AttributeList{0: big.NewInt(0)}, nil)
 }
 
 func TestSingleSparseAttribute(t *testing.T) {
-	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0)}, RevocationList{0: 0})
+	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0)}, nil)
 }
 
 func TestMultipleSparseAttributes(t *testing.T) {
-	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0), attrMaxSize - 1: big.NewInt(123)}, RevocationList{0: 0})
+	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0), attrMaxSize - 1: big.NewInt(123)}, nil)
 }
 
 func TestQualifyKey(t *testing.T) {
@@ -108,10 +108,66 @@ func TestQualifyKey(t *testing.T) {
 	ciphertext2 := encryptHelper(t, params, attrs2, revoc2, message)
 
 	// Generate key in two steps
+	//println(userMaxSize)
 	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 4)
 	key2 := qualifyHelper(t, params, key1, attrs2, *key1.lEnd, *key1.lEnd+2)
 
 	//	decryptAndCheckHelper(t, params, key1, ciphertext, message)
 	decryptAndCheckHelper(t, params, key2, ciphertext, message)
 	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
+}
+
+func TestQualifyKey2(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
+	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+
+	revoc1 := RevocationList{1, 2, 3, 7, 8}
+	revoc2 := RevocationList{1, 2, 3, 7, 8, 9}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, revoc1, message)
+	ciphertext2 := encryptHelper(t, params, attrs2, revoc2, message)
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 9)
+	key2 := qualifyHelper(t, params, key1, attrs2, 7, 9)
+
+	//	decryptAndCheckHelper(t, params, key1, ciphertext, message)
+	decryptAndCheckHelper(t, params, key2, ciphertext, message)
+	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
+}
+
+func TestQualifyKey3(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
+	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+
+	revoc1 := RevocationList{1, 5}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	ciphertext := encryptHelper(t, params, attrs2, revoc1, message)
+
+	// Generate key in two steps
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 9)
+	key2 := qualifyHelper(t, params, key1, attrs2, 8, 8)
+
+	//	decryptAndCheckHelper(t, params, key1, ciphertext, message)
+	decryptAndCheckHelper(t, params, key2, ciphertext, message)
 }
