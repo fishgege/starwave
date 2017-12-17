@@ -94,7 +94,7 @@ func main() {
 	case "unlink":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
-			os.Exit(3)
+			os.Exit(4)
 		}
 		s := ipfs.NewLocalShell()
 		myself, path := validatewrite(s, args[0])
@@ -107,7 +107,7 @@ func main() {
 	case "ls":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
-			os.Exit(4)
+			os.Exit(5)
 		}
 		s := ipfs.NewLocalShell()
 		links, err := s.List(args[0])
@@ -123,7 +123,7 @@ func main() {
 	case "cat":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
-			os.Exit(5)
+			os.Exit(6)
 		}
 		s := ipfs.NewLocalShell()
 		reader, err := s.Cat(args[0])
