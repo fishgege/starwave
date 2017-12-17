@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"crypto/rand"
+	"io/ioutil"
 	"math/big"
 	"testing"
 
@@ -76,5 +77,33 @@ func TestHybridEncryption(t *testing.T) {
 	_, success = HybridDecrypt(ekey, emsg, key)
 	if success {
 		t.Fatal("Decryption succeeded after tampering with ciphertext")
+	}
+}
+
+func TestHybridStreamEncryption(t *testing.T) {
+	message := make([]byte, 32)
+	_, err := rand.Read(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params, precomputed, key := oaqueHelper(t)
+
+	ereader, err := HybridStreamEncrypt(rand.Reader, params, precomputed, bytes.NewReader(message))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dreader, err := HybridStreamDecrypt(ereader, key)
+	if err != nil {
+		t.Fatalf("Hybrid decryption failed: %s", err.Error())
+	}
+
+	decrypted, err := ioutil.ReadAll(dreader)
+	if err != nil {
+		t.Fatalf("Could not read decrypted reader: %s", err.Error())
+	}
+	if !bytes.Equal(message, decrypted) {
+		t.Fatal("Hybrid decryption gave the wrong result")
 	}
 }
