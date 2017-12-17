@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/immesys/bw2bind"
 	ipfs "github.com/ipfs/go-ipfs-api"
 	"github.com/ucbrise/starwave/core"
 	"github.com/ucbrise/starwave/crypto/oaque"
@@ -63,6 +64,7 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
+	bw2bind.SilenceLog()
 	swc := swbind.ConnectOrExit("")
 	myvk := swc.SetEntityFromEnvironOrExit()
 	myhd := swbind.HierarchyDescriptorFromEntity(swc.GetEntity())
