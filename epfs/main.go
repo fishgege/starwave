@@ -109,10 +109,35 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
 			os.Exit(4)
 		}
+		s := ipfs.NewLocalShell()
+		links, err := s.List(args[0])
+		handle(err)
+
+		for _, link := range links {
+			terminator := ""
+			if link.Type == ipfs.TDirectory {
+				terminator = "/"
+			}
+			fmt.Printf("%s\t%s%s\t%v\n", link.Hash, link.Name, terminator, link.Size)
+		}
 	case "cat":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
 			os.Exit(5)
+		}
+		s := ipfs.NewLocalShell()
+		reader, err := s.Cat(args[0])
+		handle(err)
+		defer reader.Close()
+
+		var buf [4096]byte
+		for err == nil {
+			var n int
+			n, err = io.ReadFull(reader, buf[:])
+			os.Stdout.Write(buf[:n])
+		}
+		if err != io.EOF && err != io.ErrUnexpectedEOF {
+			fmt.Println(err)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "Invalid command %s\n", cmd)
