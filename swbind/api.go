@@ -32,6 +32,26 @@ func (swc *SWClient) GetEntity() *objects.Entity {
 	return swc.myself
 }
 
+func (swc *SWClient) GetEntitySecret() *starwave.EntitySecret {
+	return swc.mysecret
+}
+
+func (swc *SWClient) GetNamespaceDecryptionKey() *starwave.DecryptionKey {
+	return swc.nskey
+}
+
+func HierarchyDescriptorFromEntity(entity *objects.Entity) *starwave.HierarchyDescriptor {
+	hd := new(starwave.HierarchyDescriptor)
+	hd.Unmarshal(GetCommentInEntity(entity.GetContent()))
+	return hd
+}
+
+func EntityDescriptorFromEntity(entity *objects.Entity) *starwave.EntityDescriptor {
+	ed := new(starwave.EntityDescriptor)
+	ed.Unmarshal(GetContactInEntity(entity.GetContent()))
+	return ed
+}
+
 var dotnonce = []byte{0xae, 0x30, 0x35, 0xd7, 0xcc, 0xdb, 0xe1, 0xae}
 
 /* Some important utilities */

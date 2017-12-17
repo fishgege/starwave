@@ -69,27 +69,38 @@ func (hsr *HybridStreamReader) Read(dst []byte) (n int, err error) {
 	return copied + n, err
 }
 
-func HybridStreamEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.PreparedAttributeList, input io.Reader) (io.Reader, error) {
+func HybridStreamEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.PreparedAttributeList, input io.Reader) (*oaque.Ciphertext, io.Reader, error) {
 	var key [32]byte
 	encryptedKey, err := GenerateEncryptedSymmetricKey(random, params, precomputed, key[:])
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	blockcipher, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	streamcipher := cipher.NewCTR(blockcipher, make([]byte, aes.BlockSize))
+	symmencrypted := cipher.StreamReader{streamcipher, input}
+	return encryptedKey, symmencrypted, nil
+}
+
+func HybridStreamDecrypt(encryptedKey *oaque.Ciphertext, encrypted io.Reader, key *oaque.PrivateKey) (io.Reader, error) {
+	var sk [32]byte
+	DecryptSymmetricKey(key, encryptedKey, sk[:])
+
+	blockcipher, err := aes.NewCipher(sk[:])
 	if err != nil {
 		return nil, err
 	}
 
 	streamcipher := cipher.NewCTR(blockcipher, make([]byte, aes.BlockSize))
-	reader := &HybridStreamReader{
-		EncryptedSymmKey: encryptedKey.Marshal(),
-		SymmEncrypted:    cipher.StreamReader{streamcipher, input},
-	}
-	return reader, nil
+	symmdecrypted := cipher.StreamReader{streamcipher, encrypted}
+	return symmdecrypted, nil
 }
 
-func HybridStreamDecrypt(encrypted io.Reader, key *oaque.PrivateKey) (io.Reader, error) {
+func HybridStreamDecryptConcatenated(encrypted io.Reader, key *oaque.PrivateKey) (io.Reader, error) {
 	var marshalled [oaque.CiphertextMarshalledSize]byte
 	n, err := io.ReadFull(encrypted, marshalled[:])
 	if n != len(marshalled) {
@@ -101,14 +112,5 @@ func HybridStreamDecrypt(encrypted io.Reader, key *oaque.PrivateKey) (io.Reader,
 		return nil, errors.New("Could not unmarshal ciphertext")
 	}
 
-	var sk [32]byte
-	DecryptSymmetricKey(key, encryptedKey, sk[:])
-
-	blockcipher, err := aes.NewCipher(sk[:])
-	if err != nil {
-		return nil, err
-	}
-
-	streamcipher := cipher.NewCTR(blockcipher, make([]byte, aes.BlockSize))
-	return cipher.StreamReader{streamcipher, encrypted}, nil
+	return HybridStreamDecrypt(encryptedKey, encrypted, key)
 }
