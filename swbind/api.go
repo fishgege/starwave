@@ -28,6 +28,30 @@ type SWClient struct {
 	nskey    *starwave.DecryptionKey
 }
 
+func (swc *SWClient) GetEntity() *objects.Entity {
+	return swc.myself
+}
+
+func (swc *SWClient) GetEntitySecret() *starwave.EntitySecret {
+	return swc.mysecret
+}
+
+func (swc *SWClient) GetNamespaceDecryptionKey() *starwave.DecryptionKey {
+	return swc.nskey
+}
+
+func HierarchyDescriptorFromEntity(entity *objects.Entity) *starwave.HierarchyDescriptor {
+	hd := new(starwave.HierarchyDescriptor)
+	hd.Unmarshal(GetCommentInEntity(entity.GetContent()))
+	return hd
+}
+
+func EntityDescriptorFromEntity(entity *objects.Entity) *starwave.EntityDescriptor {
+	ed := new(starwave.EntityDescriptor)
+	ed.Unmarshal(GetContactInEntity(entity.GetContent()))
+	return ed
+}
+
 var dotnonce = []byte{0xae, 0x30, 0x35, 0xd7, 0xcc, 0xdb, 0xe1, 0xae}
 
 /* Some important utilities */
@@ -256,7 +280,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	} else {
 		keys = make([]*starwave.DecryptionKey, len(perms))
 		for i, perm := range perms {
-			key, err := swc.obtainKey(namespace, perm)
+			key, err := swc.ObtainKey(namespace, perm)
 			if err == nil {
 				keys[i] = key
 			}
@@ -417,7 +441,7 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 
 /* Building chains. When subscribing, we need to be able to obtain keys. */
 
-func (swc *SWClient) obtainKey(namespace string, perm *starwave.Permission) (*starwave.DecryptionKey, error) {
+func (swc *SWClient) ObtainKey(namespace string, perm *starwave.Permission) (*starwave.DecryptionKey, error) {
 	fullURI := strings.Join([]string{namespace, perm.URI.String()}, "/")
 
 	var key *starwave.DecryptionKey
@@ -454,7 +478,7 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 					perm := emsg.Key.Permissions
 					if cachedperm == nil || !perm.Equals(cachedperm) {
 						// Need to get a decryptor
-						key, err := swc.obtainKey(namespace, perm)
+						key, err := swc.ObtainKey(namespace, perm)
 						if err != nil || key == nil {
 							fmt.Println("Could not obtain decryptor")
 							continue

@@ -1,8 +1,11 @@
 package starwave
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"reflect"
 
 	"github.com/ucbrise/starwave/core"
@@ -73,8 +76,9 @@ func checkMessageType(message []byte, expected MessageType) []byte {
 
 const MarshalledLengthLength = 4
 
-func putLength(buf []byte, length int) {
+func putLength(buf []byte, length int) []byte {
 	binary.LittleEndian.PutUint32(buf, uint32(length))
+	return buf
 }
 
 func getLength(buf []byte) int {
@@ -82,8 +86,7 @@ func getLength(buf []byte) int {
 }
 
 func MarshalAppendLength(length int, buf []byte) []byte {
-	lenbuf := make([]byte, MarshalledLengthLength)
-	putLength(lenbuf, length)
+	lenbuf := putLength(make([]byte, MarshalledLengthLength), length)
 	return append(buf, lenbuf...)
 }
 
@@ -98,6 +101,30 @@ func UnmarshalPrefixLength(buf []byte) (int, []byte) {
 type Marshallable interface {
 	Marshal() []byte
 	Unmarshal([]byte) bool
+}
+
+func MarshalIntoStream(m Marshallable) io.Reader {
+	marshalled := m.Marshal()
+	length := putLength(make([]byte, MarshalledLengthLength), len(marshalled))
+	return io.MultiReader(bytes.NewReader(length), bytes.NewReader(marshalled))
+}
+
+func UnmarshalFromStream(m Marshallable, stream io.Reader) error {
+	lenbuf := make([]byte, MarshalledLengthLength)
+	_, err := io.ReadFull(stream, lenbuf)
+	if err != nil {
+		return err
+	}
+	length := getLength(lenbuf)
+	buf := make([]byte, length)
+	_, err = io.ReadFull(stream, buf)
+	if err != nil {
+		return err
+	}
+	if !m.Unmarshal(buf) {
+		return errors.New("Could not unmarshal from stream")
+	}
+	return nil
 }
 
 func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
