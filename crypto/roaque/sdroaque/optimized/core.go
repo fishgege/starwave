@@ -157,7 +157,7 @@ func nodeKeyGen(params *Params, master *MasterKey, attrs oaque.AttributeList, no
 // generate private key on the co-path
 func treeKeyGen2(params *Params, master *MasterKey, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, depthI int, depthJ int, keyList []*setKey) ([]*setKey, error) {
 	if left >= right {
-		return nil, nil
+		return keyList, nil
 	}
 
 	var err error
@@ -344,7 +344,7 @@ func nodeQualifyKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.Attribut
 // generate private keys on the co-path from a delegable private key
 func treeQualifyKey3(params *Params, qKey *oaque.PrivateKey, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, depthI int, depthJ int, keyList []*setKey) ([]*setKey, error) {
 	if left >= right {
-		return nil, nil
+		return keyList, nil
 	}
 
 	var err error
@@ -358,6 +358,10 @@ func treeQualifyKey3(params *Params, qKey *oaque.PrivateKey, attrs oaque.Attribu
 		if err != nil {
 			return nil, err
 		}
+
+		//		printNodeID(nodeID)
+		//println(depthI, depthJ+1)
+		//println("++++", keyList)
 
 		nodeID[depthJ] = 0
 
@@ -450,10 +454,14 @@ func qualifyDelegableKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.Att
 		//		node.left, node.right, *node.delegable = nil, nil, false
 		//		return node, nil
 	} else {
+		//	println(left, right, lEnd, rEnd)
+		//printNodeID(nodeID)
+		//println(depth)
 		node.keyList, err = treeQualifyKey3(params, qKey, attrs, left, right, lEnd, rEnd, nodeID, depth, depth, node.keyList)
 		if err != nil {
 			return nil, err
 		}
+		//println("----", node.keyList)
 	}
 
 	nodeID[depth] = 0
@@ -476,10 +484,11 @@ func qualifyDelegableKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.Att
 
 func qualifyNonDelegableKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, depthI int, depthJ int, keyList []*setKey) ([]*setKey, error) {
 	if left > right {
-		return nil, nil
+		return keyList, nil
 	}
 
 	var err error
+	//	println(left, right)
 
 	if !(left <= lEnd && rEnd <= right) {
 		keyList, err = nodeQualifyKey(params, qKey, attrs, nodeID, depthI, depthJ, false, keyList)
@@ -529,6 +538,12 @@ func treeQualifyKey(params *Params, qNode *privateKeyNode, attrs oaque.Attribute
 
 	if *qNode.delegable {
 		//		println(lEnd, rEnd)
+		//printNodeID(qNode.keyList[0].nodeID)
+		//println(*qNode.keyList[0].indexI, *qNode.keyList[0].indexJ)
+		//println(qNode.keyList)
+
+		//println(lEnd, rEnd)
+
 		node, err := qualifyDelegableKey(params, qNode.keyList[0].key, attrs, left, right, lEnd, rEnd, nodeID, depth)
 		if err != nil {
 			return nil, err
@@ -545,6 +560,8 @@ func treeQualifyKey(params *Params, qNode *privateKeyNode, attrs oaque.Attribute
 	tmpKeylist := qNode.keyList
 	for i := range tmpKeylist {
 		tmpLeft, tmpRight := findBound(params, tmpKeylist[i].nodeID, *tmpKeylist[i].indexJ)
+		//		printNodeID(tmpKeylist[i].nodeID)
+		//		println(*tmpKeylist[i].indexI, *tmpKeylist[i].indexJ)
 		node.keyList, err = qualifyNonDelegableKey(params, tmpKeylist[i].key, attrs, tmpLeft, tmpRight, lEnd, rEnd, tmpKeylist[i].nodeID, *tmpKeylist[i].indexI, *tmpKeylist[i].indexJ, node.keyList)
 		if err != nil {
 			return nil, err
@@ -829,10 +846,13 @@ func checkEqual(nodeA []int, indexA int, nodeB []int, indexB int) bool {
 	return true
 }
 
-func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher) *bn256.GT {
+func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher, left int, right int) *bn256.GT {
 	if qNode == nil {
 		return nil
 	}
+	//println(left, right)
+	//println(qNode.keyList)
+	//println("====")
 
 	keyList := qNode.keyList
 	cipherlist := cipher.cipherlist
@@ -855,6 +875,8 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher) *bn256.G
 		for i := range cipherlist {
 			//NOTE: might be optimized
 			for j := range keyList {
+				//		printNodeID(keyList[j].nodeID)
+				//println(*keyList[j].indexI, *keyList[j].indexJ)
 				if checkEqual(keyList[j].nodeID, *keyList[j].indexI, cipherlist[i].nodeID, *cipherlist[i].indexI) && checkSubset(keyList[j].nodeID, *keyList[j].indexJ, cipherlist[i].nodeID, *cipherlist[i].indexJ) {
 					newAttrs := newAttributeList(params, cipherlist[i].nodeID, *cipherlist[i].indexI, *cipherlist[i].indexJ, cipher.attrs, true)
 
@@ -869,12 +891,12 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher) *bn256.G
 
 	var plaintext *bn256.GT
 
-	plaintext = treeDecrypt(params, qNode.left, cipher)
+	plaintext = treeDecrypt(params, qNode.left, cipher, left, (left+right)/2)
 	if plaintext != nil {
 		return plaintext
 	}
 
-	plaintext = treeDecrypt(params, qNode.right, cipher)
+	plaintext = treeDecrypt(params, qNode.right, cipher, (left+right)/2+1, right)
 	if plaintext != nil {
 		return plaintext
 	}
@@ -885,8 +907,8 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher) *bn256.G
 // Decrypt recovers the original message from the provided ciphertext, using
 // the provided private key.
 func Decrypt(params *Params, key *PrivateKey, cipher *Cipher) *bn256.GT {
-
+	//	println("begin decrypt")
 	//	nodeID := make([]int, *params.userHeight, *params.userHeight)
-	plaintext := treeDecrypt(params, key.root, cipher) //, nodeID, 0)
+	plaintext := treeDecrypt(params, key.root, cipher, 1, *params.userSize) //, nodeID, 0)
 	return plaintext
 }
