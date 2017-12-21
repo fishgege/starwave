@@ -350,7 +350,7 @@ func treeQualifyKey3(params *Params, qKey *oaque.PrivateKey, attrs oaque.Attribu
 	var err error
 	mid := (left + right) / 2
 
-	//	println(left, right, lEnd, rEnd)
+	//	println(left, right, lEnd, rEnd, depthJ)
 	if rEnd <= mid {
 		nodeID[depthJ] = 1
 
@@ -390,6 +390,7 @@ func treeQualifyKey3(params *Params, qKey *oaque.PrivateKey, attrs oaque.Attribu
 		return keyList, nil
 	} else if lEnd <= mid && mid+1 <= rEnd {
 		//left child
+
 		nodeID[depthJ] = 0
 
 		keyList, err = nodeQualifyKey(params, qKey, attrs, nodeID, depthI, depthJ+1, false, keyList)
@@ -482,7 +483,7 @@ func qualifyDelegableKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.Att
 	return node, err
 }
 
-func qualifyNonDelegableKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, depthI int, depthJ int, keyList []*setKey) ([]*setKey, error) {
+func qualifyNonDelegableKey2(params *Params, qKey *oaque.PrivateKey, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, depthI int, depthJ int, keyList []*setKey) ([]*setKey, error) {
 	if left > right {
 		return keyList, nil
 	}
@@ -523,6 +524,20 @@ func findBound(params *Params, nodeID []int, index int) (int, int) {
 	return left, right
 }
 
+func qualifyNonDelegableKey(params *Params, qKey *oaque.PrivateKey, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, indexI int, indexJ int, keyList []*setKey) ([]*setKey, error) {
+	var err error
+
+	tmpLeft, tmpRight := findBound(params, nodeID, indexJ)
+	if (left <= tmpLeft-1 && !(rEnd < left || tmpLeft-1 < lEnd)) || (tmpRight+1 <= right && !(rEnd < tmpRight+1 || right < lEnd)) {
+		//			println(tmpLeft, tmpRight, left, right)
+		keyList, err = qualifyNonDelegableKey2(params, qKey, attrs, tmpLeft, tmpRight, lEnd, rEnd, nodeID, indexI, indexJ, keyList)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return keyList, nil
+}
+
 func treeQualifyKey(params *Params, qNode *privateKeyNode, attrs oaque.AttributeList, left int, right int, lEnd int, rEnd int, nodeID []int, depth int) (*privateKeyNode, error) {
 	if qNode == nil {
 		return nil, nil
@@ -558,14 +573,30 @@ func treeQualifyKey(params *Params, qNode *privateKeyNode, attrs oaque.Attribute
 	node.keyList = make([]*setKey, 0, len(qNode.keyList)*(*params.height))
 
 	tmpKeylist := qNode.keyList
+	//println(left, right, lEnd, rEnd)
 	for i := range tmpKeylist {
-		tmpLeft, tmpRight := findBound(params, tmpKeylist[i].nodeID, *tmpKeylist[i].indexJ)
-		//		printNodeID(tmpKeylist[i].nodeID)
+		//printNodeID(tmpKeylist[i].nodeID)
 		//		println(*tmpKeylist[i].indexI, *tmpKeylist[i].indexJ)
-		node.keyList, err = qualifyNonDelegableKey(params, tmpKeylist[i].key, attrs, tmpLeft, tmpRight, lEnd, rEnd, tmpKeylist[i].nodeID, *tmpKeylist[i].indexI, *tmpKeylist[i].indexJ, node.keyList)
-		if err != nil {
-			return nil, err
+		//println("====")
+		if *tmpKeylist[i].indexI != *tmpKeylist[i].indexJ {
+			node.keyList, err = qualifyNonDelegableKey(params, tmpKeylist[i].key, attrs, left, right, lEnd, rEnd, tmpKeylist[i].nodeID, *tmpKeylist[i].indexI, *tmpKeylist[i].indexJ, node.keyList)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			tmpKeylist[i].nodeID[*tmpKeylist[i].indexJ] = 1
+			node.keyList, err = qualifyNonDelegableKey(params, tmpKeylist[i].key, attrs, left, right, lEnd, rEnd, tmpKeylist[i].nodeID, *tmpKeylist[i].indexI, *tmpKeylist[i].indexJ+1, node.keyList)
+			if err != nil {
+				return nil, err
+			}
+
+			tmpKeylist[i].nodeID[*tmpKeylist[i].indexJ] = 0
+			node.keyList, err = qualifyNonDelegableKey(params, tmpKeylist[i].key, attrs, left, right, lEnd, rEnd, tmpKeylist[i].nodeID, *tmpKeylist[i].indexI, *tmpKeylist[i].indexJ+1, node.keyList)
+			if err != nil {
+				return nil, err
+			}
 		}
+
 	}
 
 	mid := (left + right) / 2 // Note: it should be div
@@ -850,18 +881,26 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher, left int
 	if qNode == nil {
 		return nil
 	}
-	//println(left, right)
-	//println(qNode.keyList)
-	//println("====")
+	//	println(left, right)
+	//	println(qNode.keyList)
+	//	println("====")
 
 	keyList := qNode.keyList
 	cipherlist := cipher.cipherlist
+
+	//for j := range keyList {
+	//		printNodeID(keyList[j].nodeID)
+	//println(*keyList[j].indexI, *keyList[j].indexJ)
+	//}
 
 	if *qNode.delegable {
 		for i := range cipherlist {
 			//NOTE: might be optimized
 			for j := range keyList {
 				if checkSubset(keyList[j].nodeID, *keyList[j].indexI, cipherlist[i].nodeID, *cipherlist[i].indexI) && checkSubset(keyList[j].nodeID, *keyList[j].indexJ, cipherlist[i].nodeID, *cipherlist[i].indexJ) {
+					//			printNodeID(keyList[j].nodeID)
+					//				println(*keyList[j].indexI, *keyList[j].indexJ)
+
 					newAttrs := newAttributeList(params, cipherlist[i].nodeID, *cipherlist[i].indexI, *cipherlist[i].indexJ, cipher.attrs, true)
 
 					tmpPrivateKey := oaque.NonDelegableKey(params.params, keyList[j].key, newAttrs)
@@ -875,9 +914,11 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher, left int
 		for i := range cipherlist {
 			//NOTE: might be optimized
 			for j := range keyList {
-				//		printNodeID(keyList[j].nodeID)
+				//printNodeID(keyList[j].nodeID)
 				//println(*keyList[j].indexI, *keyList[j].indexJ)
 				if checkEqual(keyList[j].nodeID, *keyList[j].indexI, cipherlist[i].nodeID, *cipherlist[i].indexI) && checkSubset(keyList[j].nodeID, *keyList[j].indexJ, cipherlist[i].nodeID, *cipherlist[i].indexJ) {
+					//printNodeID(keyList[j].nodeID)
+					//					println(*keyList[j].indexI, *keyList[j].indexJ)
 					newAttrs := newAttributeList(params, cipherlist[i].nodeID, *cipherlist[i].indexI, *cipherlist[i].indexJ, cipher.attrs, true)
 
 					tmpPrivateKey := oaque.NonDelegableKey(params.params, keyList[j].key, newAttrs)
