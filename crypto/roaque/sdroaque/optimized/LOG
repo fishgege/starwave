@@ -1,0 +1,58 @@
+go test -v -bench='BenchmarkDecrypt' -timeout=6000000ms
+=== RUN   TestSingleAttribute
+--- PASS: TestSingleAttribute (0.31s)
+=== RUN   TestSingleSparseAttribute
+--- PASS: TestSingleSparseAttribute (0.17s)
+=== RUN   TestMultipleSparseAttributes
+--- PASS: TestMultipleSparseAttributes (0.15s)
+=== RUN   TestQualifyKey
+--- PASS: TestQualifyKey (0.29s)
+=== RUN   TestQualifyKey2
+--- PASS: TestQualifyKey2 (0.34s)
+=== RUN   TestQualifyKey3
+--- PASS: TestQualifyKey3 (0.27s)
+=== RUN   TestQualifyKey4
+--- PASS: TestQualifyKey4 (0.30s)
+=== RUN   TestQualifyKey5
+--- PASS: TestQualifyKey5 (0.39s)
+=== RUN   TestQualifyKey6
+--- PASS: TestQualifyKey6 (0.41s)
+goos: linux
+goarch: amd64
+pkg: github.com/ucbrise/starwave/crypto/roaque/sdroaque/optimized
+BenchmarkDecrypt_a5_r0_n50  	     300	   5158864 ns/op
+BenchmarkDecrypt_a10_r0_n50 	     200	   5723513 ns/op
+BenchmarkDecrypt_a15_r0_n50 	     300	   5389550 ns/op
+BenchmarkDecrypt_a20_r0_n50 	     200	   5194356 ns/op
+PASS
+ok  	github.com/ucbrise/starwave/crypto/roaque/sdroaque/optimized	1686.144s
+
+
+go test -v -bench='BenchmarkDecrypt_r' -timeout=6000000ms
+=== RUN   TestSingleAttribute
+--- PASS: TestSingleAttribute (0.30s)
+=== RUN   TestSingleSparseAttribute
+--- PASS: TestSingleSparseAttribute (0.20s)
+=== RUN   TestMultipleSparseAttributes
+--- PASS: TestMultipleSparseAttributes (0.24s)
+=== RUN   TestQualifyKey
+--- PASS: TestQualifyKey (0.31s)
+=== RUN   TestQualifyKey2
+--- PASS: TestQualifyKey2 (0.37s)
+=== RUN   TestQualifyKey3
+--- PASS: TestQualifyKey3 (0.25s)
+=== RUN   TestQualifyKey4
+--- PASS: TestQualifyKey4 (0.28s)
+=== RUN   TestQualifyKey5
+--- PASS: TestQualifyKey5 (0.33s)
+=== RUN   TestQualifyKey6
+--- PASS: TestQualifyKey6 (0.35s)
+goos: linux
+goarch: amd64
+pkg: github.com/ucbrise/starwave/crypto/roaque/sdroaque/optimized
+BenchmarkDecrypt_r50_n50_a5  	     300	   5728989 ns/op
+BenchmarkDecrypt_r50_n50_a10 	     300	   5570524 ns/op
+BenchmarkDecrypt_r50_n50_a15 	     300	   5542096 ns/op
+BenchmarkDecrypt_r50_n50_a20 	     300	   5777239 ns/op
+PASS
+ok  	github.com/ucbrise/starwave/crypto/roaque/sdroaque/optimized	3224.313s

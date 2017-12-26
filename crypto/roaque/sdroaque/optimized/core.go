@@ -812,7 +812,7 @@ func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, me
 		cipher.attrs[index] = attrs[index]
 	}
 
-	if revoc == nil {
+	if revoc == nil || len(revoc) == 0 {
 		cipher.cipherlist = make(CiphertextList, 0, 2)
 
 		tmpCipher, err := newCipher(params, []int{0}, 0, 1, attrs, message)
@@ -837,6 +837,7 @@ func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, me
 	}
 
 	/*	println("cipher")
+		println(cipher.cipherlist)
 		for i, tmp := range cipher.cipherlist {
 			println("go %d", i)
 			for j := range tmp.nodeID {
@@ -881,9 +882,9 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher, left int
 	if qNode == nil {
 		return nil
 	}
-	//	println(left, right)
+	//println(left, right)
 	//	println(qNode.keyList)
-	//	println("====")
+	//println("====")
 
 	keyList := qNode.keyList
 	cipherlist := cipher.cipherlist
@@ -948,8 +949,19 @@ func treeDecrypt(params *Params, qNode *privateKeyNode, cipher *Cipher, left int
 // Decrypt recovers the original message from the provided ciphertext, using
 // the provided private key.
 func Decrypt(params *Params, key *PrivateKey, cipher *Cipher) *bn256.GT {
-	//	println("begin decrypt")
-	//	nodeID := make([]int, *params.userHeight, *params.userHeight)
+	/*println("begin decrypt")
+	println("cipher")
+	println(cipher.cipherlist)
+	for i, tmp := range cipher.cipherlist {
+		println("go %d", i)
+		for j := range tmp.nodeID {
+			println(tmp.nodeID[j])
+		}
+		println("index")
+		println(*tmp.indexI)
+		println(*tmp.indexJ)
+	}*/
 	plaintext := treeDecrypt(params, key.root, cipher, 1, *params.userSize) //, nodeID, 0)
+	//println(plaintext)
 	return plaintext
 }
