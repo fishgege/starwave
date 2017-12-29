@@ -6,7 +6,6 @@ import (
 	"io"
 	"math/big"
 	"testing"
-	"time"
 
 	"vuvuzela.io/crypto/bn256"
 )
@@ -505,10 +504,7 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
 		}
 
 		b.StartTimer()
-		println(time.Now().Second())
 		decrypted := Decrypt(key, ciphertext)
-		println(time.Now().Second())
-		println(b.N, i)
 		b.StopTimer()
 
 		if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
