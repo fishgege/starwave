@@ -880,3 +880,106 @@ func BenchmarkResampleKey_15(b *testing.B) {
 func BenchmarkResampleKey_20(b *testing.B) {
 	ResampleKeyBenchmarkHelper(b, 20, false)
 }
+
+func QualifyKeyStartBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 20)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(nil, params, master, attrs)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs[AttributeIndex(numAttributes-1)], err = rand.Int(rand.Reader, bn256.Order)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		_, err = QualifyKey(nil, params, key, attrs)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkQualifyKeyStart_5(b *testing.B) {
+	QualifyKeyStartBenchmarkHelper(b, 5)
+}
+
+func BenchmarkQualifyKeyStart_10(b *testing.B) {
+	QualifyKeyStartBenchmarkHelper(b, 10)
+}
+
+func BenchmarkQualifyKeyStart_15(b *testing.B) {
+	QualifyKeyStartBenchmarkHelper(b, 15)
+}
+
+func BenchmarkQualifyKeyStart_20(b *testing.B) {
+	QualifyKeyStartBenchmarkHelper(b, 20)
+}
+
+func QualifyKeyEndBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 20)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(nil, params, master, AttributeList{0: attrs[0]})
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		_, err = QualifyKey(nil, params, key, attrs)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkQualifyKeyEnd_5(b *testing.B) {
+	QualifyKeyEndBenchmarkHelper(b, 5)
+}
+
+func BenchmarkQualifyKeyEnd_10(b *testing.B) {
+	QualifyKeyEndBenchmarkHelper(b, 10)
+}
+
+func BenchmarkQualifyKeyEnd_15(b *testing.B) {
+	QualifyKeyEndBenchmarkHelper(b, 15)
+}
+
+func BenchmarkQualifyKeyEnd_20(b *testing.B) {
+	QualifyKeyEndBenchmarkHelper(b, 20)
+}
