@@ -61,3 +61,30 @@ else
     starwave mkd -f ns.ent -t $publishvk -x "P" -u "$nsvk/a/b/c/d/e/f" -o nstopublish.dot -b $STARWAVE_BENCHMARK_BANKROLL
     echo $publishvk > .publish.done
 fi
+
+# Create entity for subscribe benchmark
+if [[ -f .subscribe.done ]]
+then
+    echo "$preamble Subscribe benchmark already set up"
+    subscribevk=$(starwave_vk_from_entity_file subscribe.ent)
+else
+    echo "$preamble Creating entity for subscribe benchmark..."
+    starwave mke -o subscribe.ent -b $STARWAVE_BENCHMARK_BANKROLL
+    echo "$preamble Waiting one minute for the registry to update..."
+    sleep 60
+    subscribevk=$(starwave_vk_from_entity_file subscribe.ent)
+    starwave mkd -f ns.ent -t $subscribevk -x "C" -u "$nsvk/a/b/c/d/e/f" -o nstosubscribe.dot -b $STARWAVE_BENCHMARK_BANKROLL
+    echo $subscribevk > .subscribe.done
+fi
+
+# Create entity for DOT creation benchmark
+if [[ -f .dotent.done ]]
+then
+    echo "$preamble DOT creation benchmark already set up"
+    dotentvk=$(starwave_vk_from_entity_file dotent.ent)
+else
+    echo "$preamble Creating entity for DOT creation benchmark..."
+    starwave mke -o dotent.ent -b $STARWAVE_BENCHMARK_BANKROLL
+    dotentvk=$(starwave_vk_from_entity_file dotent.ent)
+    echo $dotentvk > .dotent.done
+fi

@@ -118,6 +118,7 @@ type EncryptedSymmetricKey struct {
 // message encrypted using that symmetric key.
 type EncryptedMessage struct {
 	Key     *EncryptedSymmetricKey
+	IV      [24]byte
 	Message []byte
 }
 
@@ -383,7 +384,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 		attrs := perm.AttributeSet()
 		attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
 		subkey := oaque.NonDelegableKey(delegation.To.Params, key, attrs)
-		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey)
+		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey, &delegation.Delegation.IV)
 		if !ok {
 			return nil
 		}
@@ -397,7 +398,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	attrs := perm.AttributeSet()
 	attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
 	subkey := oaque.NonDelegableKey(first.To.Params, key, attrs)
-	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey)
+	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey, &first.Key.IV)
 	if !ok {
 		return nil
 	}
@@ -497,7 +498,7 @@ func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
 // Decrypt is the same as the general "Decrypt" function, except that it uses
 // cached results in the decryptor to speed up the process.
 func (d *Decryptor) Decrypt(c *EncryptedMessage) []byte {
-	message, ok := core.HybridDecrypt(c.Key.Ciphertext, c.Message, (*oaque.PrivateKey)(d))
+	message, ok := core.HybridDecrypt(c.Key.Ciphertext, c.Message, (*oaque.PrivateKey)(d), &c.IV)
 	if !ok {
 		return nil
 	}

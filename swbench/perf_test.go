@@ -54,3 +54,33 @@ func BenchmarkPublish(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkCreateDOT(b *testing.B) {
+	b.StopTimer()
+
+	bw2bind.SilenceLog()
+	cl := swbind.ConnectOrExit("")
+
+	_, err := cl.SetEntityFile("ns.ent")
+	check(err)
+
+	dotentvkbytes, err := ioutil.ReadFile(".dotent.done")
+	check(err)
+	dotentvk := string(dotentvkbytes)
+
+	nsvkbytes, err := ioutil.ReadFile(".ns.done")
+	check(err)
+	nsvk := string(nsvkbytes)
+
+	uri := nsvk + "/a/b/c/d/e/g"
+
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		cl.CreateDOT(&bw2bind.CreateDOTParams{
+			To:                dotentvk,
+			URI:               uri,
+			AccessPermissions: "C",
+		})
+	}
+}
