@@ -318,6 +318,7 @@ func (em *EncryptedMessage) Marshal() []byte {
 	buf := newMessageBuffer(1024+MarshalledLengthLength+len(em.Message), TypeEncryptedMessage)
 
 	buf = MarshalAppendWithLength(em.Key, buf)
+	buf = append(buf, em.IV[:]...)
 	buf = MarshalAppendWithLength(NewMarshallableBytes(em.Message), buf)
 
 	return buf
@@ -331,6 +332,9 @@ func (em *EncryptedMessage) Unmarshal(marshalled []byte) bool {
 	if buf == nil {
 		return false
 	}
+
+	copy(em.IV[:], buf[:len(em.IV)])
+	buf = buf[len(em.IV):]
 
 	message := MarshallableString{}
 	buf = UnmarshalPrefixWithLength(&message, buf)

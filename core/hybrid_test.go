@@ -58,7 +58,8 @@ func TestHybridEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	decrypted, success := HybridDecrypt(ekey, emsg, key)
+	var iv [24]byte
+	decrypted, success := HybridDecrypt(ekey, emsg, key, &iv)
 	if !success {
 		t.Fatal("Hybrid decryption failed")
 	}
@@ -73,7 +74,7 @@ func TestHybridEncryption(t *testing.T) {
 	}
 	idx := bigidx.Uint64()
 	emsg[idx] = ^emsg[idx]
-	_, success = HybridDecrypt(ekey, emsg, key)
+	_, success = HybridDecrypt(ekey, emsg, key, &iv)
 	if success {
 		t.Fatal("Decryption succeeded after tampering with ciphertext")
 	}
