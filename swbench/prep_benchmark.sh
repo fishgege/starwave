@@ -70,8 +70,8 @@ then
 else
     echo "$preamble Creating entity for subscribe benchmark..."
     starwave mke -o subscribe.ent -b $STARWAVE_BENCHMARK_BANKROLL
-    echo "$preamble Waiting one minute for the registry to update..."
-    sleep 60
+    echo "$preamble Waiting two minutes for the registry to update..."
+    sleep 120
     subscribevk=$(starwave_vk_from_entity_file subscribe.ent)
     starwave mkd -f ns.ent -t $subscribevk -x "C" -u "$nsvk/a/b/c/d/e/f" -o nstosubscribe.dot -b $STARWAVE_BENCHMARK_BANKROLL
     echo $subscribevk > .subscribe.done

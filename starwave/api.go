@@ -421,6 +421,25 @@ func Encrypt(random io.Reader, hd *HierarchyDescriptor, perm *Permission, messag
 	return e.Encrypt(random, message)
 }
 
+// EncryptWithSymmetricKey is like Encrypt, but allows you to reuse the same
+// symmetric key (eliminating expensive OAQUE encryptions).
+func EncryptWithSymmetricKey(random io.Reader, esymm *EncryptedSymmetricKey, symm []byte, message []byte) (*EncryptedMessage, error) {
+	res := &EncryptedMessage{
+		Key:     esymm,
+		Message: nil,
+	}
+	_, err := rand.Read(res.IV[:])
+	if err != nil {
+		return nil, err
+	}
+
+	var key [32]byte
+	copy(key[:], symm[:len(key)])
+
+	res.Message = core.EncryptWithSymmetricKey(random, &key, &res.IV, message)
+	return res, nil
+}
+
 // GenerateEncryptedSymmetricKey fills in the provided buffer "symm" with random
 // bytes (for use as a symmetric key), and returns a ciphertext of that key,
 // encrypted under the specified permissions. Note that the space of ciphertexts
@@ -478,6 +497,16 @@ func (e *Encryptor) GenerateEncryptedSymmetricKey(random io.Reader, symm []byte)
 func Decrypt(c *EncryptedMessage, key *DecryptionKey) []byte {
 	d := PrepareDecryption(c.Key.Permissions, key)
 	return d.Decrypt(c)
+}
+
+// DecryptWithSymmetricKey is like Decrypt, but allows you to reuse the same
+// symmetric key (avoiding expensive OAQUE decryptions).
+func DecryptWithSymmetricKey(c *EncryptedMessage, key *[32]byte) []byte {
+	message, ok := core.DecryptWithSymmetricKey(key, &c.IV, c.Message)
+	if !ok {
+		return nil
+	}
+	return message
 }
 
 // DecryptSymmetricKey is like Decrypt, except that the input is only an

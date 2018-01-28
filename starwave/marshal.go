@@ -137,17 +137,24 @@ func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
 	return buf
 }
 
-func UnmarshalPrefixWithLength(m Marshallable, buf []byte) []byte {
+func UnmarshalPrefixWithLengthRaw(buf []byte) ([]byte, []byte) {
 	length, buf := UnmarshalPrefixLength(buf)
 	if length == 0 {
 		// Message was nil
-		return buf
+		return nil, buf
 	}
-	success := m.Unmarshal(buf[:length])
-	if !success {
-		return nil
+	return buf[:length], buf[length:]
+}
+
+func UnmarshalPrefixWithLength(m Marshallable, buf []byte) []byte {
+	rawbytes, rest := UnmarshalPrefixWithLengthRaw(buf)
+	if rawbytes != nil {
+		success := m.Unmarshal(rawbytes)
+		if !success {
+			return nil
+		}
 	}
-	return buf[length:]
+	return rest
 }
 
 type MarshallableString struct {
@@ -371,6 +378,30 @@ func (em *EncryptedMessage) Unmarshal(marshalled []byte) bool {
 	em.Message = []byte(message.s)
 
 	return true
+}
+
+// UnmarshalPartial is like Unmarshal, except that it does not unmarshal the
+// encrypted symmetric key. This is useful for checking if the decryption is
+// already cached.
+func (em *EncryptedMessage) UnmarshalPartial(marshalled []byte) ([]byte, bool) {
+	buf := checkMessageType(marshalled, TypeEncryptedMessage)
+
+	ekey, buf := UnmarshalPrefixWithLengthRaw(buf)
+	if buf == nil {
+		return ekey, false
+	}
+
+	copy(em.IV[:], buf[:len(em.IV)])
+	buf = buf[len(em.IV):]
+
+	message := MarshallableString{}
+	buf = UnmarshalPrefixWithLength(&message, buf)
+	if buf == nil {
+		return ekey, false
+	}
+	em.Message = []byte(message.s)
+
+	return ekey, true
 }
 
 func (bd *BroadeningDelegation) Marshal() []byte {

@@ -59,6 +59,7 @@ func DecryptWithSymmetricKey(key *[32]byte, iv *[24]byte, encryptedMessage []byt
 }
 
 // These functions are useful for long messages (encrypted with stream ciphers).
+// New secret key is chosen for every read
 
 type HybridStreamReader struct {
 	EncryptedSymmKey []byte

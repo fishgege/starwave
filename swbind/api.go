@@ -20,12 +20,34 @@ import (
 	"github.com/ucbrise/starwave/starwave"
 )
 
+type pubentry struct {
+	esymm *starwave.EncryptedSymmetricKey
+	symm  [32]byte
+}
+
+type subentry struct {
+	symm [32]byte
+}
+
 type SWClient struct {
 	*bw2bind.BW2Client
 	myvk     string
 	myself   *objects.Entity
 	mysecret *starwave.EntitySecret
 	nskey    *starwave.DecryptionKey
+
+	// Cache for symmetric keys (to avoid OAQUE operations where possible)
+	pubmutex *sync.RWMutex
+	pubcache map[string]*pubentry
+	submutex *sync.RWMutex
+	subcache map[string]*subentry
+}
+
+func (swc *SWClient) initcache() {
+	swc.pubmutex = new(sync.RWMutex)
+	swc.pubcache = make(map[string]*pubentry)
+	swc.submutex = new(sync.RWMutex)
+	swc.subcache = make(map[string]*subentry)
 }
 
 func (swc *SWClient) GetEntity() *objects.Entity {
@@ -70,14 +92,17 @@ func Connect(to string) (*SWClient, error) {
 		return nil, err
 	}
 	c := new(SWClient)
+	c.initcache()
 	c.BW2Client = bw2c
 	return c, err
 }
 
 func ConnectOrExit(to string) *SWClient {
-	return &SWClient{
+	rv := &SWClient{
 		BW2Client: bw2bind.ConnectOrExit(to),
 	}
+	rv.initcache()
+	return rv
 }
 
 func extractNamespace(uri string) (string, string) {
@@ -371,13 +396,32 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 
 /* Publishing messages. Need to make sure that POs are encrypted. */
 
-func encryptPO(random io.Reader, hd *starwave.HierarchyDescriptor, perm *starwave.Permission, po bw2bind.PayloadObject) (bw2bind.PayloadObject, error) {
+func (swc *SWClient) encryptPO(random io.Reader, hd *starwave.HierarchyDescriptor, perm *starwave.Permission, po bw2bind.PayloadObject) (bw2bind.PayloadObject, error) {
 	contents := po.GetContents()
 	buf := make([]byte, 4+len(contents))
 	binary.LittleEndian.PutUint32(buf[:4], uint32(po.GetPONum()))
 	copy(buf[4:], contents)
 
-	message, err := starwave.Encrypt(random, hd, perm, buf)
+	cachekey := string(perm.Marshal())
+	var entry *pubentry
+	var hit bool
+	var err error
+	swc.pubmutex.RLock()
+	if entry, hit = swc.pubcache[cachekey]; !hit {
+		swc.pubmutex.RUnlock()
+		entry = new(pubentry)
+		entry.esymm, err = starwave.GenerateEncryptedSymmetricKey(random, hd, perm, entry.symm[:])
+		if err != nil {
+			return nil, err
+		}
+		swc.pubmutex.Lock()
+		swc.pubcache[cachekey] = entry
+		swc.pubmutex.Unlock()
+	} else {
+		swc.pubmutex.RUnlock()
+	}
+
+	message, err := starwave.EncryptWithSymmetricKey(random, entry.esymm, entry.symm[:], buf)
 	if err != nil {
 		return nil, err
 	}
@@ -388,16 +432,39 @@ func encryptPO(random io.Reader, hd *starwave.HierarchyDescriptor, perm *starwav
 	return encrypted, nil
 }
 
-func decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) bw2bind.PayloadObject {
+func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) bw2bind.PayloadObject {
 	if po.GetPONum() != bw2bind.PONumPOEncryptedSTARWAVE {
-		panic("Trying to decrypt message which is not STARWAVE-encrypted")
+		return po
 	}
 	message := new(starwave.EncryptedMessage)
-	success := message.Unmarshal(po.GetContents())
+	marshalledkey, success := message.UnmarshalPartial(po.GetContents())
 	if !success {
 		return nil
 	}
-	buf := d.Decrypt(message)
+
+	// Check if marshalledkey is cached
+	cachekey := string(marshalledkey)
+	var entry *subentry
+	var hit bool
+	swc.submutex.RLock()
+	if entry, hit = swc.subcache[cachekey]; !hit {
+		swc.submutex.RUnlock()
+		esk := new(starwave.EncryptedSymmetricKey)
+		success = esk.Unmarshal(marshalledkey)
+		if !success {
+			// Not holding any locks
+			return nil
+		}
+		entry = new(subentry)
+		d.DecryptSymmetricKey(esk, entry.symm[:])
+		swc.submutex.Lock()
+		swc.subcache[cachekey] = entry
+		swc.submutex.Unlock()
+	} else {
+		swc.submutex.RUnlock()
+	}
+
+	buf := starwave.DecryptWithSymmetricKey(message, &entry.symm)
 	if buf == nil {
 		return nil
 	}
@@ -429,7 +496,7 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 	}
 
 	for i, po := range p.PayloadObjects {
-		p.PayloadObjects[i], err = encryptPO(rand.Reader, hd, perm, po)
+		p.PayloadObjects[i], err = swc.encryptPO(rand.Reader, hd, perm, po)
 		if err != nil {
 			return err
 		}
@@ -488,7 +555,7 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 					}
 					if decryptor != nil && perm.Equals(cachedperm) {
 						// Decrypt the PO
-						msg.POs[i] = decryptPO(decryptor, po)
+						msg.POs[i] = swc.decryptPO(decryptor, po)
 					}
 				}
 			}
