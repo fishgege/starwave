@@ -1,4 +1,5 @@
-*.ent
+*~
 *.dot
-*.done
+*.ent
+.*.done
 .bw2bind.log
