@@ -24,11 +24,15 @@ func assert(cond bool) {
 	}
 }
 
-func BenchmarkPublish(b *testing.B) {
+func HelperPublish(b *testing.B, msgsize int, encrypt bool, disablecache bool) {
 	b.StopTimer()
 
 	bw2bind.SilenceLog()
 	cl := ConnectOrExit("")
+
+	if disablecache {
+		cl.disablecache()
+	}
 
 	nsvkbytes, err := ioutil.ReadFile(".ns.done")
 	check(err)
@@ -37,8 +41,8 @@ func BenchmarkPublish(b *testing.B) {
 	_, err = cl.SetEntityFile("publish.ent")
 	check(err)
 
-	// 1 MiB
-	buf := make([]byte, 1024*1024)
+	// Construct message
+	buf := make([]byte, msgsize)
 	_, err = rand.Read(buf)
 	check(err)
 
@@ -49,16 +53,62 @@ func BenchmarkPublish(b *testing.B) {
 
 	b.StartTimer()
 
-	for i := 0; i < b.N; i++ {
-		cl.Publish(&bw2bind.PublishParams{
-			URI:            uri,
-			AutoChain:      true,
-			PayloadObjects: []bw2bind.PayloadObject{po},
-		})
+	if encrypt {
+		for i := 0; i < b.N; i++ {
+			cl.Publish(&bw2bind.PublishParams{
+				URI:            uri,
+				AutoChain:      true,
+				PayloadObjects: []bw2bind.PayloadObject{po},
+			})
+		}
+	} else {
+		for i := 0; i < b.N; i++ {
+			cl.BW2Client.Publish(&bw2bind.PublishParams{
+				URI:            uri,
+				AutoChain:      true,
+				PayloadObjects: []bw2bind.PayloadObject{po},
+			})
+		}
 	}
 }
 
-func BenchmarkSubscribe(b *testing.B) {
+func BenchmarkPublishEncrypt1KiB(b *testing.B) {
+	HelperPublish(b, 1<<10, true, false)
+}
+
+func BenchmarkPublishEncrypt32KiB(b *testing.B) {
+	HelperPublish(b, 1<<15, true, false)
+}
+
+func BenchmarkPublishEncrypt1MiB(b *testing.B) {
+	HelperPublish(b, 1<<20, true, false)
+}
+
+func BenchmarkPublishEncrypt1KiBNoCache(b *testing.B) {
+	HelperPublish(b, 1<<10, true, true)
+}
+
+func BenchmarkPublishEncrypt32KiBNoCache(b *testing.B) {
+	HelperPublish(b, 1<<15, true, true)
+}
+
+func BenchmarkPublishEncrypt1MiBNoCache(b *testing.B) {
+	HelperPublish(b, 1<<20, true, true)
+}
+
+func BenchmarkPublishNoEncrypt1KiB(b *testing.B) {
+	HelperPublish(b, 1<<10, false, false)
+}
+
+func BenchmarkPublishNoEncrypt32KiB(b *testing.B) {
+	HelperPublish(b, 1<<15, false, false)
+}
+
+func BenchmarkPublishNoEncrypt1MiB(b *testing.B) {
+	HelperPublish(b, 1<<20, false, false)
+}
+
+func HelperSubscribe(b *testing.B, msgsize int, encrypt bool, disablecache bool) {
 	b.StopTimer()
 
 	bw2bind.SilenceLog()
@@ -71,8 +121,8 @@ func BenchmarkSubscribe(b *testing.B) {
 	_, err = cl.SetEntityFile("publish.ent")
 	check(err)
 
-	// 1 MiB
-	buf := make([]byte, 1024*1024)
+	// Create message
+	buf := make([]byte, msgsize)
 	_, err = rand.Read(buf)
 	check(err)
 
@@ -80,27 +130,29 @@ func BenchmarkSubscribe(b *testing.B) {
 	check(err)
 
 	/* Encrypt the message */
-	authority, _, err := cl.ResolveRegistry(nsvk)
-	if err != nil {
-		b.Fatal(err)
-	}
+	if encrypt {
+		authority, _, err := cl.ResolveRegistry(nsvk)
+		if err != nil {
+			b.Fatal(err)
+		}
 
-	hd := new(starwave.HierarchyDescriptor)
-	success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()))
-	if !success {
-		b.Fatal("Invalid hierarchy descriptor in namespace authority")
-	}
+		hd := new(starwave.HierarchyDescriptor)
+		success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()))
+		if !success {
+			b.Fatal("Invalid hierarchy descriptor in namespace authority")
+		}
 
-	perm, err := starwave.ParsePermission("a/b/c/d/e/f", time.Now())
-	if err != nil {
-		b.Fatal(err)
-	}
+		perm, err := starwave.ParsePermission("a/b/c/d/e/f", time.Now())
+		if err != nil {
+			b.Fatal(err)
+		}
 
-	po, err = cl.encryptPO(rand.Reader, hd, perm, po)
-	if po == nil {
-		b.Fatal("Could not encrypt payload object")
-	} else if err != nil {
-		b.Fatal(err)
+		po, err = cl.encryptPO(rand.Reader, hd, perm, po)
+		if po == nil {
+			b.Fatal("Could not encrypt payload object")
+		} else if err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	/* Now, spawn threads to actually send this as fast as possible */
@@ -122,7 +174,7 @@ func BenchmarkSubscribe(b *testing.B) {
 	ncpu := runtime.NumCPU()
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	nthreads := ncpu - 3
+	nthreads := ncpu - 2
 	if nthreads < 1 {
 		b.Fatal("Not enough CPUs for this benchmark")
 	}
@@ -130,27 +182,94 @@ func BenchmarkSubscribe(b *testing.B) {
 		go publishfunc()
 	}
 
+	// Wait so the queues on the router fill up a bit
+	time.Sleep(5 * time.Second)
+
 	scl := ConnectOrExit("")
 	_, err = scl.SetEntityFile("subscribe.ent")
 	check(err)
 
+	if disablecache {
+		scl.disablecache()
+	}
+
+	var msgs chan *bw2bind.SimpleMessage
+	var handle string
+	params := &bw2bind.SubscribeParams{
+		URI: uri,
+	}
+
 	b.StartTimer()
 
-	msgs, err := scl.Subscribe(&bw2bind.SubscribeParams{
-		URI: uri,
-	})
+	if encrypt {
+		msgs, handle, err = scl.SubscribeH(params)
+	} else {
+		msgs, handle, err = scl.BW2Client.SubscribeH(params)
+	}
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	for i := 0; i < b.N; i++ {
-		_ = <-msgs
+		a := <-msgs
+		if a == nil {
+			panic(a)
+		}
 	}
 
+	b.StopTimer()
+
 	atomic.StoreUint32(&finished, 1)
+
+	go func() {
+		// Drain the channel
+		for _ = range msgs {
+		}
+	}()
+
+	// This may block until the channel is drained. I suspect it's because of
+	// the bindings' event loop blocking.
+	err = scl.Unsubscribe(handle)
+	check(err)
 }
 
-func BenchmarkQuery(b *testing.B) {
+func BenchmarkSubscribeEncrypt1KiB(b *testing.B) {
+	HelperSubscribe(b, 1<<10, true, false)
+}
+
+func BenchmarkSubscribeEncrypt32KiB(b *testing.B) {
+	HelperSubscribe(b, 1<<15, true, false)
+}
+
+func BenchmarkSubscribeEncrypt1MiB(b *testing.B) {
+	HelperSubscribe(b, 1<<20, true, false)
+}
+
+func BenchmarkSubscribeEncrypt1KiBNoCache(b *testing.B) {
+	HelperSubscribe(b, 1<<10, true, true)
+}
+
+func BenchmarkSubscribeEncrypt32KiBNoCache(b *testing.B) {
+	HelperSubscribe(b, 1<<15, true, true)
+}
+
+func BenchmarkSubscribeEncrypt1MiBNoCache(b *testing.B) {
+	HelperSubscribe(b, 1<<20, true, true)
+}
+
+func BenchmarkSubscribeNoEncrypt1KiB(b *testing.B) {
+	HelperSubscribe(b, 1<<10, false, false)
+}
+
+func BenchmarkSubscribeNoEncrypt32KiB(b *testing.B) {
+	HelperSubscribe(b, 1<<15, false, false)
+}
+
+func BenchmarkSubscribeNoEncrypt1MiB(b *testing.B) {
+	HelperSubscribe(b, 1<<20, false, false)
+}
+
+func HelperQuery(b *testing.B, msgsize int, encrypt bool) {
 	b.StopTimer()
 
 	bw2bind.SilenceLog()
@@ -163,8 +282,7 @@ func BenchmarkQuery(b *testing.B) {
 	_, err = cl.SetEntityFile("publish.ent")
 	check(err)
 
-	// 1 MiB
-	buf := make([]byte, 1024*1024)
+	buf := make([]byte, msgsize)
 	_, err = rand.Read(buf)
 	check(err)
 
@@ -173,31 +291,72 @@ func BenchmarkQuery(b *testing.B) {
 
 	uri := nsvk + "/a/b/c/d/e/f"
 
-	cl.Publish(&bw2bind.PublishParams{
+	pparams := &bw2bind.PublishParams{
 		URI:            uri,
 		AutoChain:      true,
 		PayloadObjects: []bw2bind.PayloadObject{po},
 		Persist:        true,
-	})
+	}
 
-	_, err = cl.SetEntityFile("subscribe.ent")
+	if encrypt {
+		cl.Publish(pparams)
+	} else {
+		cl.BW2Client.Publish(pparams)
+	}
+
+	scl := ConnectOrExit("")
+	_, err = scl.SetEntityFile("subscribe.ent")
 	check(err)
 
 	b.StartTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, err := cl.QueryOne(&bw2bind.QueryParams{
-			URI: uri,
-		})
-		b.StopTimer()
-		if err != nil {
-			b.Fatal(err)
+	if encrypt {
+		for i := 0; i < b.N; i++ {
+			msg, err := scl.QueryOne(&bw2bind.QueryParams{
+				URI: uri,
+			})
+			if err != nil {
+				b.Fatal(err)
+			} else if len(msg.POs[0].GetContents()) != msgsize {
+				b.Fatal("Retrieved message has the wrong length")
+			}
 		}
-		b.StartTimer()
+	} else {
+		for i := 0; i < b.N; i++ {
+			_, err := scl.BW2Client.QueryOne(&bw2bind.QueryParams{
+				URI: uri,
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
 	}
 }
 
-func BenchmarkCreateDOT(b *testing.B) {
+func BenchmarkQueryEncrypt1KiB(b *testing.B) {
+	HelperQuery(b, 1<<10, true)
+}
+
+func BenchmarkQueryEncrypt32KiB(b *testing.B) {
+	HelperQuery(b, 1<<15, true)
+}
+
+func BenchmarkQueryEncrypt1MiB(b *testing.B) {
+	HelperQuery(b, 1<<20, true)
+}
+
+func BenchmarkQueryNoEncrypt1KiB(b *testing.B) {
+	HelperQuery(b, 1<<10, false)
+}
+
+func BenchmarkQueryNoEncrypt32KiB(b *testing.B) {
+	HelperQuery(b, 1<<15, false)
+}
+
+func BenchmarkQueryNoEncrypt1MiB(b *testing.B) {
+	HelperQuery(b, 1<<20, false)
+}
+
+func HelperCreateDOT(b *testing.B, crypto bool) {
 	b.StopTimer()
 
 	bw2bind.SilenceLog()
@@ -217,12 +376,81 @@ func BenchmarkCreateDOT(b *testing.B) {
 	uri := nsvk + "/a/b/c/d/e/g"
 
 	b.StartTimer()
-
-	for i := 0; i < b.N; i++ {
-		cl.BW2Client.CreateDOT(&bw2bind.CreateDOTParams{
-			To:                dotentvk,
-			URI:               uri,
-			AccessPermissions: "C",
-		})
+	if crypto {
+		for i := 0; i < b.N; i++ {
+			cl.CreateDOT(&bw2bind.CreateDOTParams{
+				To:                dotentvk,
+				URI:               uri,
+				AccessPermissions: "C",
+			})
+		}
+	} else {
+		for i := 0; i < b.N; i++ {
+			cl.BW2Client.CreateDOT(&bw2bind.CreateDOTParams{
+				To:                dotentvk,
+				URI:               uri,
+				AccessPermissions: "C",
+			})
+		}
 	}
+}
+
+func BenchmarkCreateDOTCrypto(b *testing.B) {
+	HelperCreateDOT(b, true)
+}
+
+func BenchmarkCreateDOTNoCrypto(b *testing.B) {
+	HelperCreateDOT(b, false)
+}
+
+func HelperBuildDOTChain(b *testing.B, crypto bool) {
+	b.StopTimer()
+
+	bw2bind.SilenceLog()
+	cl := ConnectOrExit("")
+
+	_, err := cl.SetEntityFile("subscribe.ent")
+	check(err)
+
+	subscribevkbytes, err := ioutil.ReadFile(".subscribe.done")
+	check(err)
+	subscribevk := string(subscribevkbytes)
+
+	nsvkbytes, err := ioutil.ReadFile(".ns.done")
+	check(err)
+	nsvk := string(nsvkbytes)
+
+	uri := nsvk + "/a/b/c/d/e/f"
+
+	perm, err := starwave.ParsePermission("a/b/c/d/e/f", time.Now())
+	check(err)
+
+	b.StartTimer()
+	if crypto {
+		for i := 0; i < b.N; i++ {
+			key, err := cl.ObtainKey(nsvk, perm)
+			if key == nil {
+				panic("ObtainKey failed")
+			} else if err != nil {
+				panic(err)
+			}
+		}
+	} else {
+		for i := 0; i < b.N; i++ {
+			chain, err := cl.BW2Client.BuildAnyChain(uri, "C", subscribevk)
+			if chain == nil {
+				panic("BuildAnyChain failed")
+			} else if err != nil {
+				panic(err)
+			}
+		}
+	}
+}
+
+func BenchmarkBuildDOTChainCrypto(b *testing.B) {
+	HelperBuildDOTChain(b, true)
+}
+
+func BenchmarkBuildDOTChainNoCrypto(b *testing.B) {
+	HelperBuildDOTChain(b, false)
 }

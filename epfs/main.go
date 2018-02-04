@@ -25,19 +25,23 @@ func handle(err error) {
 	}
 }
 
-func addtofs(s *ipfs.Shell, nodeid string, path string, filehash string) string {
+func addtofs(s *ipfs.Shell, nodeid string, path string, filehash string, verbose bool) string {
 	newroothash, err := s.Patch("/ipns/"+nodeid, "add-link", path, "/ipfs/"+filehash)
 	handle(err)
 
-	fmt.Printf("Updated directory tree: %s\n", newroothash)
+	if verbose {
+		fmt.Printf("Updated directory tree: %s\n", newroothash)
+	}
 	return newroothash
 }
 
-func setnewroothash(s *ipfs.Shell, newroothash string) {
+func setnewroothash(s *ipfs.Shell, newroothash string, verbose bool) {
 	err := s.Publish("", newroothash)
 	handle(err)
 
-	fmt.Println("Published new root")
+	if verbose {
+		fmt.Println("Published new root")
+	}
 }
 
 func validatewrite(s *ipfs.Shell, fullpath string) (string, string) {
@@ -54,6 +58,48 @@ func validatewrite(s *ipfs.Shell, fullpath string) (string, string) {
 	components := strings.SplitN(fullpath, "/", 4)
 
 	return myself, components[3]
+}
+
+func encryptfile(path string, myparams *oaque.Params, newfile io.Reader) io.Reader {
+	perm, err := starwave.ParsePermission(path, time.Now())
+	handle(err)
+	encryptedkey, encfile, err := core.HybridStreamEncrypt(rand.Reader, myparams, oaque.PrepareAttributeSet(myparams, perm.AttributeSet()), newfile)
+	handle(err)
+
+	newfile = io.MultiReader(starwave.MarshalIntoStream(perm), bytes.NewReader(encryptedkey.Marshal()), encfile)
+	return newfile
+}
+
+func decryptfile(reader io.Reader, swc *swbind.SWClient, namespace string, myvk string, myhd *starwave.HierarchyDescriptor, verbose bool) io.Reader {
+	perm := new(starwave.Permission)
+	err := starwave.UnmarshalFromStream(perm, reader)
+	handle(err)
+
+	var decryptionkey *oaque.PrivateKey
+	var params *oaque.Params
+	if namespace == myvk {
+		decryptionkey = swc.GetNamespaceDecryptionKey().Key
+		params = myhd.Params
+	} else {
+		namespacekey, err := swc.ObtainKey(namespace, perm)
+		handle(err)
+		if namespacekey == nil {
+			fmt.Fprintf(os.Stderr, "Could not obtain decryption key for %s and %s\n", perm.URI.String(), perm.Time.String())
+			os.Exit(8)
+		}
+		decryptionkey = namespacekey.Key
+		params = namespacekey.Hierarchy.Params
+		if verbose {
+			fmt.Fprintf(os.Stderr, "Obtained decryption key for %s and %s\n", namespacekey.Permissions.URI.String(), namespacekey.Permissions.Time.String())
+		}
+	}
+
+	decryptionkey = oaque.NonDelegableKey(params, decryptionkey, perm.AttributeSet())
+
+	decryptedreader, err := core.HybridStreamDecryptConcatenated(reader, decryptionkey)
+	handle(err)
+
+	return decryptedreader
 }
 
 func main() {
@@ -87,19 +133,14 @@ func main() {
 			newfile = os.Stdin
 		}
 
-		perm, err := starwave.ParsePermission(path, time.Now())
-		handle(err)
-		encryptedkey, encfile, err := core.HybridStreamEncrypt(rand.Reader, myparams, oaque.PrepareAttributeSet(myparams, perm.AttributeSet()), newfile)
-		handle(err)
-
-		newfile = io.MultiReader(starwave.MarshalIntoStream(perm), bytes.NewReader(encryptedkey.Marshal()), encfile)
+		newfile = encryptfile(path, myparams, newfile)
 
 		hash, err := s.Add(newfile)
 		handle(err)
 		fmt.Printf("Added file: %s\n", hash)
 
-		newroothash := addtofs(s, myself, path, hash)
-		setnewroothash(s, newroothash)
+		newroothash := addtofs(s, myself, path, hash, true)
+		setnewroothash(s, newroothash, true)
 	case "mkdir":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
@@ -112,8 +153,8 @@ func main() {
 		handle(err)
 		fmt.Printf("Added directory: %s\n", hash)
 
-		newroothash := addtofs(s, myself, path, hash)
-		setnewroothash(s, newroothash)
+		newroothash := addtofs(s, myself, path, hash, true)
+		setnewroothash(s, newroothash, true)
 	case "unlink":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
@@ -126,7 +167,7 @@ func main() {
 		handle(err)
 		fmt.Printf("Updated directory tree: %s\n", newroothash)
 
-		setnewroothash(s, newroothash)
+		setnewroothash(s, newroothash, true)
 	case "ls":
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Usage: %s %s <target>\n", os.Args[0], cmd)
@@ -167,32 +208,7 @@ func main() {
 		handle(err)
 		defer reader.Close()
 
-		perm := new(starwave.Permission)
-		err = starwave.UnmarshalFromStream(perm, reader)
-		handle(err)
-
-		var decryptionkey *oaque.PrivateKey
-		var params *oaque.Params
-		if namespace == myvk {
-			decryptionkey = swc.GetNamespaceDecryptionKey().Key
-			params = myhd.Params
-		} else {
-			namespacekey, err := swc.ObtainKey(namespace, perm)
-			handle(err)
-			if namespacekey == nil {
-				fmt.Fprintf(os.Stderr, "Could not obtain decryption key for %s and %s\n", perm.URI.String(), perm.Time.String())
-				os.Exit(8)
-			}
-			decryptionkey = namespacekey.Key
-			params = namespacekey.Hierarchy.Params
-			fmt.Fprintf(os.Stderr, "Obtained decryption key for %s and %s\n", namespacekey.Permissions.URI.String(), namespacekey.Permissions.Time.String())
-		}
-
-		decryptionkey, err = oaque.QualifyKey(nil, params, decryptionkey, perm.AttributeSet())
-		handle(err)
-
-		decryptedreader, err := core.HybridStreamDecryptConcatenated(reader, decryptionkey)
-		handle(err)
+		decryptedreader := decryptfile(reader, swc, namespace, myvk, myhd, true)
 
 		var buf [4096]byte
 		for err == nil {

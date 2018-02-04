@@ -41,13 +41,26 @@ type SWClient struct {
 	pubcache map[string]*pubentry
 	submutex *sync.RWMutex
 	subcache map[string]*subentry
+
+	cachedisabled bool
+	buffersize    int
 }
 
-func (swc *SWClient) initcache() {
+func (swc *SWClient) init() {
 	swc.pubmutex = new(sync.RWMutex)
 	swc.pubcache = make(map[string]*pubentry)
 	swc.submutex = new(sync.RWMutex)
 	swc.subcache = make(map[string]*subentry)
+
+	swc.buffersize = 1024
+}
+
+func (swc *SWClient) disablecache() {
+	swc.cachedisabled = true
+}
+
+func (swc *SWClient) setbuffersize(size int) {
+	swc.buffersize = size
 }
 
 func (swc *SWClient) GetEntity() *objects.Entity {
@@ -92,7 +105,7 @@ func Connect(to string) (*SWClient, error) {
 		return nil, err
 	}
 	c := new(SWClient)
-	c.initcache()
+	c.init()
 	c.BW2Client = bw2c
 	return c, err
 }
@@ -101,7 +114,7 @@ func ConnectOrExit(to string) *SWClient {
 	rv := &SWClient{
 		BW2Client: bw2bind.ConnectOrExit(to),
 	}
-	rv.initcache()
+	rv.init()
 	return rv
 }
 
@@ -407,16 +420,19 @@ func (swc *SWClient) encryptPO(random io.Reader, hd *starwave.HierarchyDescripto
 	var hit bool
 	var err error
 	swc.pubmutex.RLock()
-	if entry, hit = swc.pubcache[cachekey]; !hit {
+	if entry, hit = swc.pubcache[cachekey]; swc.cachedisabled || !hit {
+		disabled := swc.cachedisabled
 		swc.pubmutex.RUnlock()
 		entry = new(pubentry)
 		entry.esymm, err = starwave.GenerateEncryptedSymmetricKey(random, hd, perm, entry.symm[:])
 		if err != nil {
 			return nil, err
 		}
-		swc.pubmutex.Lock()
-		swc.pubcache[cachekey] = entry
-		swc.pubmutex.Unlock()
+		if !disabled {
+			swc.pubmutex.Lock()
+			swc.pubcache[cachekey] = entry
+			swc.pubmutex.Unlock()
+		}
 	} else {
 		swc.pubmutex.RUnlock()
 	}
@@ -447,7 +463,8 @@ func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) 
 	var entry *subentry
 	var hit bool
 	swc.submutex.RLock()
-	if entry, hit = swc.subcache[cachekey]; !hit {
+	if entry, hit = swc.subcache[cachekey]; swc.cachedisabled || !hit {
+		disabled := swc.cachedisabled
 		swc.submutex.RUnlock()
 		esk := new(starwave.EncryptedSymmetricKey)
 		success = esk.Unmarshal(marshalledkey)
@@ -457,9 +474,11 @@ func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) 
 		}
 		entry = new(subentry)
 		d.DecryptSymmetricKey(esk, entry.symm[:])
-		swc.submutex.Lock()
-		swc.subcache[cachekey] = entry
-		swc.submutex.Unlock()
+		if !disabled {
+			swc.submutex.Lock()
+			swc.subcache[cachekey] = entry
+			swc.submutex.Unlock()
+		}
 	} else {
 		swc.submutex.RUnlock()
 	}
@@ -532,7 +551,7 @@ func (swc *SWClient) ObtainKey(namespace string, perm *starwave.Permission) (*st
 }
 
 func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) chan *bw2bind.SimpleMessage {
-	output := make(chan *bw2bind.SimpleMessage, 1024)
+	output := make(chan *bw2bind.SimpleMessage, swc.buffersize)
 	go func() {
 		var decryptor *starwave.Decryptor
 		var cachedperm *starwave.Permission
@@ -561,6 +580,7 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 			}
 			output <- msg
 		}
+
 		close(output)
 	}()
 	return output
