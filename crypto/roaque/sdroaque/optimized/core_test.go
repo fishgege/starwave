@@ -461,7 +461,7 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int,
 		//	println(time.Now().Second())
 		decrypted := Decrypt(params, key, ciphertext)
 		//println(time.Now().Second())
-		oaque.Decrypt(key.root.keyList[0].key, ciphertext.cipherlist[0].ciphertext)
+		//oaque.Decrypt(key.root.keyList[0].key, ciphertext.cipherlist[0].ciphertext)
 		//println(time.Now().Second())
 		//println(b.N, i)
 		b.StopTimer()

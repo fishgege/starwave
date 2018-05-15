@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"io"
 	"math/big"
+	mRand "math/rand"
 	"testing"
+	"time"
 
 	"github.com/ucbrise/starwave/crypto/oaque"
 	"vuvuzela.io/crypto/bn256"
@@ -272,22 +274,90 @@ func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
 	return bn256.Pair(g1, g2), nil
 }
 
-const maxRevocations int = 2000
+// The maximum number of leaves in the tree is 2000
+
+const maxLeaves int = 2000
 
 func BenchmarkSetup(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _, err := Setup(rand.Reader, 20, maxRevocations)
+		_, _, err := Setup(rand.Reader, 20, maxLeaves)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func EncryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int) {
+func QualifyKeyBenchmarkHelper(b *testing.B, numAttributes int, numLeaves int) {
+	b.StopTimer()
+	mRand.Seed(time.Now().UTC().UnixNano())
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 20, maxLeaves)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(oaque.AttributeList)
+		for i := 0; i != numAttributes-1; i++ {
+			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(params, master, oaque.AttributeList{0: attrs[0]}, 0, maxLeaves)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		lEnd := 1 + mRand.Intn(maxLeaves-numLeaves)
+		rEnd := lEnd + numLeaves
+
+		if rEnd > maxLeaves {
+			b.Fatal("out of bound")
+		}
+
+		b.StartTimer()
+		_, err = QualifyKey(params, key, attrs, lEnd, rEnd)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// The first parameter is the number of attribute of the final key. The second
+// parameter is the number of leaves of the final key.
+
+func BenchmarkQualifyKey_a20_l5(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 5)
+}
+
+func BenchmarkQualifyKey_a20_l10(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 10)
+}
+
+func BenchmarkQualifyKey_a20_l30(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 30)
+}
+
+func BenchmarkQualifyKey_a20_l50(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 50)
+}
+
+func BenchmarkQualifyKey_a20_l100(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 100)
+}
+
+//==============================================================================
+
+func EncryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocations int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, _, err := Setup(rand.Reader, 20, maxRevocations)
+	params, _, err := Setup(rand.Reader, 20, maxLeaves)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -307,8 +377,8 @@ func EncryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int)
 			}
 		}
 
-		perms := make(RevocationList, 0, maxRevocations)
-		for i := 0; i != maxRevocations; i++ {
+		perms := make(RevocationList, 0, maxLeaves)
+		for i := 0; i != maxLeaves; i++ {
 			perms = append(perms, i+1)
 		}
 
@@ -336,75 +406,81 @@ func EncryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int)
 	}
 }
 
-func BenchmarkEncrypt_5_0(b *testing.B) {
-	EncryptBenchmarkHelper(b, 5, 0)
+// Assume there are at most 2000 leaves. The first parameter is the number of slots
+// for attributes (which does not include slots for CS Method). The second parameter
+// is the number of revoked leaves.
+
+func BenchmarkEncryptForLeaves_5_0(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 5, 0)
 }
 
-func BenchmarkEncrypt_10_0(b *testing.B) {
-	EncryptBenchmarkHelper(b, 10, 0)
+func BenchmarkEncryptForLeaves_10_0(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 10, 0)
 }
 
-func BenchmarkEncrypt_15_0(b *testing.B) {
-	EncryptBenchmarkHelper(b, 15, 0)
+func BenchmarkEncryptForLeaves_15_0(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 15, 0)
 }
 
-func BenchmarkEncrypt_20_0(b *testing.B) {
-	EncryptBenchmarkHelper(b, 20, 0)
+func BenchmarkEncryptForLeaves_20_0(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 20, 0)
 }
 
-func BenchmarkEncrypt_5_50(b *testing.B) {
-	EncryptBenchmarkHelper(b, 5, 50)
+func BenchmarkEncryptForLeaves_5_50(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 5, 50)
 }
 
-func BenchmarkEncrypt_10_50(b *testing.B) {
-	EncryptBenchmarkHelper(b, 10, 50)
+func BenchmarkEncrypForLeavest_10_50(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 10, 50)
 }
 
-func BenchmarkEncrypt_15_50(b *testing.B) {
-	EncryptBenchmarkHelper(b, 15, 50)
+func BenchmarkEncryptForLeaves_15_50(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 15, 50)
 }
 
-func BenchmarkEncrypt_20_50(b *testing.B) {
-	EncryptBenchmarkHelper(b, 20, 50)
+func BenchmarkEncryptForLeaves_20_50(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 20, 50)
 }
 
-func BenchmarkEncrypt_5_500(b *testing.B) {
-	EncryptBenchmarkHelper(b, 5, 500)
+func BenchmarkEncryptForLeaves_5_500(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 5, 500)
 }
 
-func BenchmarkEncrypt_10_500(b *testing.B) {
-	EncryptBenchmarkHelper(b, 10, 500)
+func BenchmarkEncryptForLeaves_10_500(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 10, 500)
 }
 
-func BenchmarkEncrypt_15_500(b *testing.B) {
-	EncryptBenchmarkHelper(b, 15, 500)
+func BenchmarkEncryptForLeaves_15_500(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 15, 500)
 }
 
-func BenchmarkEncrypt_20_500(b *testing.B) {
-	EncryptBenchmarkHelper(b, 20, 500)
+func BenchmarkEncryptForLeaves_20_500(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 20, 500)
 }
 
-func BenchmarkEncrypt_5_1000(b *testing.B) {
-	EncryptBenchmarkHelper(b, 5, 1000)
+func BenchmarkEncryptForLeaves_5_1000(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 5, 1000)
 }
 
-func BenchmarkEncrypt_10_1000(b *testing.B) {
-	EncryptBenchmarkHelper(b, 10, 1000)
+func BenchmarkEncryptForLeaves_10_1000(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 10, 1000)
 }
 
-func BenchmarkEncrypt_15_1000(b *testing.B) {
-	EncryptBenchmarkHelper(b, 15, 1000)
+func BenchmarkEncryptForLeaves_15_1000(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 15, 1000)
 }
 
-func BenchmarkEncrypt_20_1000(b *testing.B) {
-	EncryptBenchmarkHelper(b, 20, 1000)
+func BenchmarkEncryptForLeaves_20_1000(b *testing.B) {
+	EncryptBenchmarkHelperForLeaves(b, 20, 1000)
 }
 
-func DecryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int, numPermissions int) {
+//======================================================================
+
+func DecryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocations int, numPermissions int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20, maxRevocations)
+	params, master, err := Setup(rand.Reader, 20, maxLeaves)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -423,8 +499,8 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int,
 			}
 		}
 
-		perms := make(RevocationList, 0, maxRevocations)
-		for i := 0; i != maxRevocations; i++ {
+		perms := make(RevocationList, 0, maxLeaves)
+		for i := 0; i != maxLeaves; i++ {
 			perms = append(perms, i+1)
 		}
 
@@ -461,7 +537,7 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int,
 		//	println(time.Now().Second())
 		decrypted := Decrypt(params, key, ciphertext)
 		//println(time.Now().Second())
-		oaque.Decrypt(key.root.keyList[0].key, ciphertext.cipherlist[0].ciphertext)
+		//oaque.Decrypt(key.root.keyList[0].key, ciphertext.cipherlist[0].ciphertext)
 		//println(time.Now().Second())
 		//println(b.N, i)
 		b.StopTimer()
@@ -487,50 +563,240 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int, numRevocations int,
 	}
 }
 
-func BenchmarkDecrypt_a5_r0_n50(b *testing.B) {
-	DecryptBenchmarkHelper(b, 5, 0, 50)
+// Assume there are at most 2000 leaves. The first parameter is the number of slots
+// for attributes (which does not include slots for CS Method). The second parameter
+// is the number of revoked leaves. The third parameter is the number of leaves the decryption
+// key has.
+
+func BenchmarkDecryptForLeaves_a5_r0_n50(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 5, 0, 50)
 }
 
-func BenchmarkDecrypt_a10_r0_n50(b *testing.B) {
-	DecryptBenchmarkHelper(b, 10, 0, 50)
+func BenchmarkDecryptForLeaves_a10_r0_n50(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 10, 0, 50)
 }
 
-func BenchmarkDecrypt_a15_r0_n50(b *testing.B) {
-	DecryptBenchmarkHelper(b, 15, 0, 50)
+func BenchmarkDecryptForLeaves_a15_r0_n50(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 15, 0, 50)
 }
 
-func BenchmarkDecrypt_a20_r0_n50(b *testing.B) {
-	DecryptBenchmarkHelper(b, 20, 0, 50)
+func BenchmarkDecrypForLeavest_a20_r0_n50(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 20, 0, 50)
 }
 
-func BenchmarkDecrypt_r50_n50_a5(b *testing.B) {
-	DecryptBenchmarkHelper(b, 5, 50, 50)
+func BenchmarkDecryptForLeaves_r50_n50_a5(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 5, 50, 50)
 }
 
-func BenchmarkDecrypt_r50_n50_a10(b *testing.B) {
-	DecryptBenchmarkHelper(b, 10, 50, 50)
+func BenchmarkDecryptForLeaves_r50_n50_a10(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 10, 50, 50)
 }
 
-func BenchmarkDecrypt_r50_n50_a15(b *testing.B) {
-	DecryptBenchmarkHelper(b, 15, 50, 50)
+func BenchmarkDecryptForLeaves_r50_n50_a15(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 15, 50, 50)
 }
 
-func BenchmarkDecrypt_r50_n50_a20(b *testing.B) {
-	DecryptBenchmarkHelper(b, 20, 50, 50)
+func BenchmarkDecryptForLeaves_r50_n50_a20(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 20, 50, 50)
 }
 
-func BenchmarkDecrypt_r500_n200_a5(b *testing.B) {
-	DecryptBenchmarkHelper(b, 5, 500, 200)
+func BenchmarkDecryptForLeaves_r500_n200_a5(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 5, 500, 200)
 }
 
-func BenchmarkDecrypt_r500_n200_a10(b *testing.B) {
-	DecryptBenchmarkHelper(b, 10, 500, 200)
+func BenchmarkDecryptForLeaves_r500_n200_a10(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 10, 500, 200)
 }
 
-func BenchmarkDecrypt_r500_n200_a15(b *testing.B) {
-	DecryptBenchmarkHelper(b, 15, 500, 200)
+func BenchmarkDecryptForLeaves_r500_n200_a15(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 15, 500, 200)
 }
 
-func BenchmarkDecrypt_r500_n200_a20(b *testing.B) {
-	DecryptBenchmarkHelper(b, 20, 500, 200)
+func BenchmarkDecryptForLeaves_r500_n200_a20(b *testing.B) {
+	DecryptBenchmarkHelperForLeaves(b, 20, 500, 200)
+}
+
+//=============================================================================
+
+type interval struct {
+	lEnd int
+	rEnd int
+}
+
+const totUsers int = 200
+const keyLen int = maxLeaves / totUsers
+
+func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocations int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, _, err := Setup(rand.Reader, 20, maxLeaves)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		//println(i, b.N)
+		message, err := NewRandomMessage(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(oaque.AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		perms := make([]*interval, totUsers)
+		for i, j := 0, 0; i != totUsers; i++ {
+			tmp := &interval{lEnd: j + 1, rEnd: j + keyLen}
+			perms[i] = tmp
+			j = j + keyLen
+		}
+
+		for i := range perms {
+			j, err := rand.Int(rand.Reader, new(big.Int).SetUint64((uint64)(i+1)))
+			if err != nil {
+				b.Fatal(err)
+			}
+			perms[i], perms[j.Uint64()] = perms[j.Uint64()], perms[i]
+		}
+
+		revocs := make(RevocationList, 0, numRevocations*keyLen)
+		for i := 0; i != numRevocations; i++ {
+			for j := perms[i].lEnd; j <= perms[i].rEnd; j++ {
+				revocs = append(revocs, j)
+			}
+		}
+
+		b.StartTimer()
+		_, err = Encrypt(params, attrs, revocs, message)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Assume there are at most 2000 leaves, 200 users, and each user owns 10 leaves.
+// The first parameter is the number of slots for attributes (which does not
+// include slots for CS Method). The second parameter is the number of revoked leaves.
+
+func BenchmarkEncryptForUsers_20_0(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 0)
+}
+
+func BenchmarkEncryptForUsers_20_5(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 5)
+}
+
+func BenchmarkEncryptForUsers_20_20(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 20)
+}
+
+func BenchmarkEncryptForUsers_20_50(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 50)
+}
+
+func BenchmarkEncryptForUsers_20_100(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 100)
+}
+
+//==============================================================================
+
+func DecryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocations int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, master, err := Setup(rand.Reader, 20, maxLeaves)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		//println(i)
+		message, err := NewRandomMessage(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(oaque.AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		perms := make([]*interval, totUsers)
+		for i, j := 0, 0; i != totUsers; i++ {
+			tmp := &interval{lEnd: j + 1, rEnd: j + keyLen}
+			perms[i] = tmp
+			j = j + keyLen
+		}
+
+		for i := range perms {
+			j, err := rand.Int(rand.Reader, new(big.Int).SetUint64((uint64)(i+1)))
+			if err != nil {
+				b.Fatal(err)
+			}
+			perms[i], perms[j.Uint64()] = perms[j.Uint64()], perms[i]
+		}
+
+		revocs := make(RevocationList, 0, numRevocations*keyLen)
+		for i := 0; i != numRevocations; i++ {
+			for j := perms[i].lEnd; j <= perms[i].rEnd; j++ {
+				revocs = append(revocs, j)
+			}
+		}
+
+		lEnd := perms[numRevocations].lEnd
+		rEnd := perms[numRevocations].rEnd
+
+		key, err := KeyGen(params, master, attrs, lEnd-1, rEnd-lEnd+1)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		ciphertext, err := Encrypt(params, attrs, revocs, message)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		decrypted := Decrypt(params, key, ciphertext)
+		b.StopTimer()
+
+		if !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
+			b.Fatal("Original and decrypted messages differ")
+		}
+	}
+}
+
+// Assume there are at most 2000 leaves, 200 users, and each user owns 10 leaves.
+// The first parameter is the number of slots for attributes (which does not
+// include slots for CS Method). The second parameter is the number of revoked leaves.
+
+func BenchmarkDecryptForUsers_a20_r0(b *testing.B) {
+	DecryptBenchmarkHelperForUsers(b, 20, 0)
+}
+
+func BenchmarkDecryptForUsers_a20_r5(b *testing.B) {
+	DecryptBenchmarkHelperForUsers(b, 20, 5)
+}
+
+func BenchmarkDecryptForUsers_a20_r20(b *testing.B) {
+	DecryptBenchmarkHelperForUsers(b, 20, 20)
+}
+
+func BenchmarkDecryptForUsers_a20_r50(b *testing.B) {
+	DecryptBenchmarkHelperForUsers(b, 20, 50)
+}
+
+func BenchmarkDecryptForUsers_a20_r100(b *testing.B) {
+	DecryptBenchmarkHelperForUsers(b, 20, 100)
 }

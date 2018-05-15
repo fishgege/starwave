@@ -49,7 +49,7 @@ type Cipher struct {
 
 // Setup generates the system parameters, which may be made visible to an
 // adversary. The parameter "l" is the total number of attributes supported
-// (indexed from 1 to l-1). The parameter	"n" is the total number of users
+// (indexed from 0 to l-1). The parameter	"n" is the total number of users
 // supported(indexed from 1 to n).
 func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 	params := &Params{}
