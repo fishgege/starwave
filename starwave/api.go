@@ -4,6 +4,7 @@ package starwave
 
 import (
 	"crypto/rand"
+	"fmt"
 	"io"
 	"math/big"
 	"time"
@@ -13,24 +14,37 @@ import (
 	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
+// Types of keys
+const (
+	KeyTypeDecryption = iota
+	KeyTypeSignature
+)
+
+// Prefixes used to construct attribute lists
+var (
+	DecryptionPrefix = []byte{0x0}
+	SignaturePrefix  = []byte{0x1}
+)
+
 // HierarchyDescriptor is the public information representing a hierarchy.
 type HierarchyDescriptor struct {
 	Nickname string
 	Params   *oaque.Params
 }
 
-// HashToZp() hashes the hierarchy, independent of its nickname, to a single
+// HashToZp hashes the hierarchy, independent of its nickname, to a single
 // number from 0 to p - 1.
 func (hd *HierarchyDescriptor) HashToZp() *big.Int {
 	return cryptutils.HashToZp(hd.Params.Marshal())
 }
 
-// DecryptionKey represents a key that can be used to decrypt messages on a set
-// of resources and time range.
+// DecryptionKey represents a key that can be used to decrypt/sign messages on a
+// set of resources and time range.
 type DecryptionKey struct {
 	Hierarchy   *HierarchyDescriptor
 	Key         *oaque.PrivateKey
 	Permissions *Permission
+	KeyType     int
 }
 
 // Permission represents a set of resources bundled with a time range.
@@ -87,8 +101,17 @@ func (p *Permission) Equals(other *Permission) bool {
 }
 
 // AttributeSet converts a permission into an attribute list for use with OAQUE.
-func (p *Permission) AttributeSet() oaque.AttributeList {
-	return core.AttributeSetFromPaths(p.URI, p.Time)
+func (p *Permission) AttributeSet(keyType int) oaque.AttributeList {
+	var prefix []byte
+	switch keyType {
+	case KeyTypeDecryption:
+		prefix = DecryptionPrefix
+	case KeyTypeSignature:
+		prefix = SignaturePrefix
+	default:
+		panic(fmt.Sprintf("Unknown key type %d", keyType))
+	}
+	return core.AttributeSetFromPaths(p.URI, p.Time, prefix)
 }
 
 // EntityDescriptor represents the publicly available information describing an
@@ -111,6 +134,7 @@ type EntitySecret struct {
 // the same symmetric key.
 type EncryptedSymmetricKey struct {
 	Ciphertext  *oaque.Ciphertext
+	Signature   *oaque.Signature
 	Permissions *Permission
 }
 
@@ -261,7 +285,7 @@ func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *
 // key whose capability is qualified. The returned key is safe to give to
 // another entity.
 func DelegateRaw(random io.Reader, from *DecryptionKey, perm *Permission) (*DecryptionKey, error) {
-	attrs := perm.AttributeSet()
+	attrs := perm.AttributeSet(from.KeyType)
 
 	t, err := oaque.RandomInZp(random)
 	if err != nil {
@@ -276,6 +300,7 @@ func DelegateRaw(random io.Reader, from *DecryptionKey, perm *Permission) (*Decr
 		Hierarchy:   from.Hierarchy,
 		Key:         qualified,
 		Permissions: perm,
+		KeyType:     from.KeyType,
 	}, nil
 
 	return nil, nil
@@ -309,8 +334,8 @@ func CreateEntity(random io.Reader, nickname string) (*EntityDescriptor, *Entity
 // DelegateBroadening creates a delegation with permission inheritance to
 // another entity. If the source entity receives a key for a "narrower"
 // set of permissions, the destination entity inherits that key.
-func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, to *EntityDescriptor, perm *Permission) (*BroadeningDelegation, error) {
-	attrs := perm.AttributeSet()
+func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, to *EntityDescriptor, perm *Permission, keyType int) (*BroadeningDelegation, error) {
+	attrs := perm.AttributeSet(keyType)
 	attrs[MaxURIDepth+TimeDepth] = hd.HashToZp()
 
 	s, err := oaque.RandomInZp(random)
@@ -347,7 +372,7 @@ func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntityS
 // broadening delegations to other entities, they will inherit this key if it
 // is "narrower" than the permissions conveyed in those broadening delegations.
 func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *EntityDescriptor, perm *Permission) (*BroadeningDelegationWithKey, error) {
-	attrs := perm.AttributeSet()
+	attrs := perm.AttributeSet(from.KeyType)
 	attrs[MaxURIDepth+TimeDepth] = from.Hierarchy.HashToZp()
 
 	key, err := DelegateRaw(random, from, perm)
@@ -376,12 +401,12 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 
 // ResolveChain resolves a chain of broadening delegations, the first of which
 // contains a key. In other words, it performs permission inheritance.
-func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegation, to *EntitySecret) *DecryptionKey {
+func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegation, to *EntitySecret, keyType int) *DecryptionKey {
 	key := oaque.NonDelegableKeyFromMaster(to.Descriptor.Params, to.Key, make(oaque.AttributeList))
 	for i := len(rest) - 1; i >= 0; i-- {
 		delegation := rest[i]
 		perm := delegation.Delegation.Key.Permissions
-		attrs := perm.AttributeSet()
+		attrs := perm.AttributeSet(keyType)
 		attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
 		subkey := oaque.NonDelegableKey(delegation.To.Params, key, attrs)
 		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey, &delegation.Delegation.IV)
@@ -395,7 +420,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	}
 
 	perm := first.Key.Key.Permissions
-	attrs := perm.AttributeSet()
+	attrs := perm.AttributeSet(keyType)
 	attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
 	subkey := oaque.NonDelegableKey(first.To.Params, key, attrs)
 	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey, &first.Key.IV)
@@ -453,7 +478,7 @@ func GenerateEncryptedSymmetricKey(random io.Reader, hd *HierarchyDescriptor, pe
 // specified set of permissions, and returns an Encryptor containing those
 // cached results.
 func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission) *Encryptor {
-	attrs := perm.AttributeSet()
+	attrs := perm.AttributeSet(KeyTypeDecryption)
 	return &Encryptor{
 		Hierarchy:   hd,
 		Permissions: perm,
@@ -519,7 +544,7 @@ func DecryptSymmetricKey(c *EncryptedSymmetricKey, key *DecryptionKey, symm []by
 // PrepareDecryption caches intermediate results for decrypting messages
 // encrypted with exactly the set of permissions provided as the first argument.
 func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
-	attrs := perm.AttributeSet()
+	attrs := perm.AttributeSet(KeyTypeDecryption)
 	childKey := oaque.NonDelegableKey(key.Hierarchy.Params, key.Key, attrs)
 	return (*Decryptor)(childKey)
 }
@@ -543,7 +568,7 @@ func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte) [
 
 // DeriveKey takes as input a chain of delegations, and tries to derive the key
 // for a Permission.
-func DeriveKey(chain []*DelegationBundle, perm *Permission, me *EntitySecret) *DecryptionKey {
+func DeriveKey(chain []*DelegationBundle, perm *Permission, me *EntitySecret, keyType int) *DecryptionKey {
 	// First step: reduce the chain of DelegationBundles into a chain of
 	// FullDelegations. This can be done easily, because the individual
 	// delegations in a delegation bundle are disjoint.
@@ -593,7 +618,7 @@ loop:
 		}
 	}
 
-	return ResolveChain(start, rest, me)
+	return ResolveChain(start, rest, me, keyType)
 }
 
 func PermissionRange(uri string, timeStart time.Time, timeEnd time.Time) ([]*Permission, error) {
@@ -617,7 +642,7 @@ func PermissionRange(uri string, timeStart time.Time, timeEnd time.Time) ([]*Per
 
 // DelegateFull creates a full delegation, granting a key for broadening, while
 // providing keys that are available right now.
-func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, perm *Permission) (*FullDelegation, error) {
+func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, perm *Permission, keyType int) (*FullDelegation, error) {
 	fd := new(FullDelegation)
 	fd.Permissions = perm
 
@@ -626,6 +651,9 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 	// Now, of the provided keys, check which ones can provide at least parts of
 	// the specified permissions.
 	for _, key := range keys {
+		if key.KeyType != keyType {
+			continue
+		}
 		kperm := key.Permissions
 		if kperm.Contains(perm) {
 			// We can generate the key exactly.
@@ -661,7 +689,7 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 
 	if !gotExactKey {
 		var err error
-		fd.Broad, err = DelegateBroadening(random, hd, from, to, perm)
+		fd.Broad, err = DelegateBroadening(random, hd, from, to, perm, keyType)
 		if err != nil {
 			return nil, err
 		}
@@ -670,11 +698,11 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 	return fd, nil
 }
 
-func ExtractKeys(db *DelegationBundle, me *EntitySecret) []*DecryptionKey {
+func ExtractKeys(db *DelegationBundle, me *EntitySecret, keyType int) []*DecryptionKey {
 	var res []*DecryptionKey
 	for _, deleg := range db.Delegations {
 		for _, narrow := range deleg.Narrow {
-			key := ResolveChain(narrow, nil, me)
+			key := ResolveChain(narrow, nil, me, keyType)
 			if key != nil {
 				res = append(res, key)
 			}
@@ -685,7 +713,7 @@ func ExtractKeys(db *DelegationBundle, me *EntitySecret) []*DecryptionKey {
 
 // DelegateBundle performs multiple full delegations over a resource and time
 // range.
-func DelegateBundle(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, uri string, start time.Time, end time.Time) (*DelegationBundle, error) {
+func DelegateBundle(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret, keys []*DecryptionKey, to *EntityDescriptor, uri string, start time.Time, end time.Time, keyType int) (*DelegationBundle, error) {
 	perms, err := PermissionRange(uri, start, end)
 	if err != nil {
 		return nil, err
@@ -694,7 +722,7 @@ func DelegateBundle(random io.Reader, hd *HierarchyDescriptor, from *EntitySecre
 	db := new(DelegationBundle)
 	db.Delegations = make([]*FullDelegation, len(perms))
 	for i, perm := range perms {
-		db.Delegations[i], err = DelegateFull(random, hd, from, keys, to, perm)
+		db.Delegations[i], err = DelegateFull(random, hd, from, keys, to, perm, keyType)
 		if err != nil {
 			return nil, err
 		}

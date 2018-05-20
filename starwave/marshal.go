@@ -240,6 +240,10 @@ func (dk *DecryptionKey) Marshal() []byte {
 	buf = MarshalAppendWithLength(dk.Key, buf)
 	buf = MarshalAppendWithLength(dk.Permissions, buf)
 
+	typeBuf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(typeBuf, uint32(dk.KeyType))
+	buf = MarshalAppendWithLength(NewMarshallableBytes(typeBuf), buf)
+
 	return buf
 }
 
@@ -263,6 +267,13 @@ func (dk *DecryptionKey) Unmarshal(marshalled []byte) bool {
 	if buf == nil {
 		return false
 	}
+
+	typeString := MarshallableString{}
+	buf = UnmarshalPrefixWithLength(&typeString, buf)
+	if buf == nil {
+		return false
+	}
+	dk.KeyType = int(binary.LittleEndian.Uint32([]byte(typeString.s)))
 
 	return true
 }

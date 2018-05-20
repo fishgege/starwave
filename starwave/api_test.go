@@ -149,17 +149,17 @@ func TestBroadeningDelegation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d2, err := DelegateBroadening(rand.Reader, hierarchy, i1secret, intermediate2, prefix2perm)
+	d2, err := DelegateBroadening(rand.Reader, hierarchy, i1secret, intermediate2, prefix2perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	d3, err := DelegateBroadening(rand.Reader, hierarchy, i2secret, reader, prefix1perm)
+	d3, err := DelegateBroadening(rand.Reader, hierarchy, i2secret, reader, prefix1perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	key := ResolveChain(d1, []*BroadeningDelegation{d2, d3}, rsecret)
+	key := ResolveChain(d1, []*BroadeningDelegation{d2, d3}, rsecret, KeyTypeDecryption)
 	if key == nil {
 		t.Fatal("Could not resolve chain of delegations")
 	}
@@ -214,17 +214,17 @@ func TestDelegationBundleBroadening(t *testing.T) {
 	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1)
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/*", start, end2)
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/*", start, end2, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestDelegationBundleBroadening(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret, KeyTypeDecryption)
 	if key == nil {
 		t.Fatal("Could not derive key from chain")
 	}
@@ -270,17 +270,17 @@ func TestDelegationBundleNotAChain(t *testing.T) {
 	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1)
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/d/f", start, end2)
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/d/f", start, end2, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestDelegationBundleNotAChain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret, KeyTypeDecryption)
 	if key != nil {
 		t.Fatal("Derived key from bogus chain")
 	}
@@ -314,17 +314,17 @@ func TestDelegationBundleNoKey(t *testing.T) {
 	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{}, intermediate1, "a/b/c/d/*", start, end1)
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{}, intermediate1, "a/b/c/d/*", start, end1, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/*", start, end2)
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/c/*", start, end2, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestDelegationBundleNoKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret, KeyTypeDecryption)
 	if key != nil {
 		t.Fatal("Derived key from bogus chain")
 	}
@@ -358,17 +358,17 @@ func TestDelegationBundleNotBroadening(t *testing.T) {
 	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1)
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end1, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/*", start, end2)
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, []*DecryptionKey{}, intermediate2, "a/b/*", start, end2, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3)
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, []*DecryptionKey{}, reader, "a/b/c/*", start, end3, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestDelegationBundleNotBroadening(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret, KeyTypeDecryption)
 	if key != nil {
 		t.Fatal("Derived key from bogus chain")
 	}
@@ -402,17 +402,17 @@ func TestDelegationBundleWithTransferredKeys(t *testing.T) {
 	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end2)
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end2, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, ExtractKeys(db1, i1secret), intermediate2, "a/b/c/*", start, end1)
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, ExtractKeys(db1, i1secret, KeyTypeDecryption), intermediate2, "a/b/c/*", start, end1, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, ExtractKeys(db2, i2secret), reader, "a/b/c/d/*", start, end3)
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, ExtractKeys(db2, i2secret, KeyTypeDecryption), reader, "a/b/c/d/*", start, end3, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +427,7 @@ func TestDelegationBundleWithTransferredKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret, KeyTypeDecryption)
 	if key == nil {
 		t.Fatal("Could not derive key from chain")
 	}

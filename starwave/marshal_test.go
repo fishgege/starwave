@@ -61,13 +61,13 @@ func TestBroadeningDelegationWithMarshalling(t *testing.T) {
 	}
 	remarshalHelper(d1)
 
-	d2, err := DelegateBroadening(rand.Reader, hierarchy, i1secret, intermediate2, prefix2perm)
+	d2, err := DelegateBroadening(rand.Reader, hierarchy, i1secret, intermediate2, prefix2perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 	remarshalHelper(d2)
 
-	d3, err := DelegateBroadening(rand.Reader, hierarchy, i2secret, reader, prefix1perm)
+	d3, err := DelegateBroadening(rand.Reader, hierarchy, i2secret, reader, prefix1perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestBroadeningDelegationWithMarshalling(t *testing.T) {
 	d1 = fd.Narrow[1]
 	d2 = fd.Broad*/
 
-	key := ResolveChain(d1, []*BroadeningDelegation{d2, d3}, rsecret)
+	key := ResolveChain(d1, []*BroadeningDelegation{d2, d3}, rsecret, KeyTypeDecryption)
 	if key == nil {
 		t.Fatal("Could not resolve chain of delegations")
 	}
@@ -146,19 +146,19 @@ func TestDelegationBundleWithMarshalling(t *testing.T) {
 	remarshalHelper(reader)
 	remarshalHelper(rsecret)
 
-	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end2)
+	db1, err := DelegateBundle(rand.Reader, hierarchy, asecret, []*DecryptionKey{master}, intermediate1, "a/b/c/d/*", start, end2, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 	remarshalHelper(db1)
 
-	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, ExtractKeys(db1, i1secret), intermediate2, "a/b/c/*", start, end1)
+	db2, err := DelegateBundle(rand.Reader, hierarchy, i1secret, ExtractKeys(db1, i1secret, KeyTypeDecryption), intermediate2, "a/b/c/*", start, end1, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
 	remarshalHelper(db2)
 
-	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, ExtractKeys(db2, i2secret), reader, "a/b/c/d/*", start, end3)
+	db3, err := DelegateBundle(rand.Reader, hierarchy, i2secret, ExtractKeys(db2, i2secret, KeyTypeDecryption), reader, "a/b/c/d/*", start, end3, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestDelegationBundleWithMarshalling(t *testing.T) {
 	}
 	remarshalHelper(perm)
 
-	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret)
+	key := DeriveKey([]*DelegationBundle{db1, db2, db3}, perm, rsecret, KeyTypeDecryption)
 	if key == nil {
 		t.Fatal("Could not derive key from chain")
 	}

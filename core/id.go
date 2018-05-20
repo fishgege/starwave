@@ -291,14 +291,25 @@ func (id ID) HashToZp() []*big.Int {
 	return hashed
 }
 
-// AttributeSetFromIDs converts a URI and time to an OAQUE attribute set.
-func AttributeSetFromPaths(uriPath URIPath, timePath TimePath) map[oaque.AttributeIndex]*big.Int {
+// AttributeSetFromPaths converts a URI and time to an OAQUE attribute set. The
+// "prefix" bytes are appended to the representation of each component before
+// hashing, to allow, e.g., some attribute sets to be used for encryption and
+// others for signing.
+func AttributeSetFromPaths(uriPath URIPath, timePath TimePath, prefix []byte) map[oaque.AttributeIndex]*big.Int {
 	attrs := make(map[oaque.AttributeIndex]*big.Int)
 	for i, uriComponent := range uriPath {
-		attrs[oaque.AttributeIndex(i)] = cryptutils.HashToZp(uriComponent.Representation())
+		comp := uriComponent.Representation()
+		buf := make([]byte, len(prefix)+len(comp))
+		copy(buf, prefix)
+		copy(buf[len(prefix):], comp)
+		attrs[oaque.AttributeIndex(i)] = cryptutils.HashToZp(buf)
 	}
 	for j, timeComponent := range timePath {
-		attrs[oaque.AttributeIndex(j+MaxURILength)] = cryptutils.HashToZp(timeComponent.Representation())
+		comp := timeComponent.Representation()
+		buf := make([]byte, len(prefix)+len(comp))
+		copy(buf, prefix)
+		copy(buf[len(prefix):], comp)
+		attrs[oaque.AttributeIndex(j+MaxURILength)] = cryptutils.HashToZp(buf)
 	}
 	return attrs
 }
