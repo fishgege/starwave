@@ -35,7 +35,7 @@ func TestSimpleMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key, err := DelegateRaw(rand.Reader, master, perm)
+	key, err := DelegateRaw(rand.Reader, master, perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestExplicitHybrid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key, err := DelegateRaw(rand.Reader, master, perm)
+	key, err := DelegateRaw(rand.Reader, master, perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestGeneralRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key, err := DelegateRaw(rand.Reader, master, prefixperm)
+	key, err := DelegateRaw(rand.Reader, master, prefixperm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestBroadeningDelegation(t *testing.T) {
 	intermediate2, i2secret := createEntityHelper(t, "Intermediate 2")
 	reader, rsecret := createEntityHelper(t, "Reader")
 
-	d1, err := DelegateBroadeningWithKey(rand.Reader, master, intermediate1, perm)
+	d1, err := DelegateBroadeningWithKey(rand.Reader, master, intermediate1, perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,8 @@ import (
 
 // Types of keys
 const (
-	KeyTypeDecryption = iota
+	KeyTypeMaster = iota
+	KeyTypeDecryption
 	KeyTypeSignature
 )
 
@@ -25,6 +26,10 @@ var (
 	DecryptionPrefix = []byte{0x0}
 	SignaturePrefix  = []byte{0x1}
 )
+
+func keyTypeCompatible(from int, to int) bool {
+	return from == KeyTypeMaster || from == to
+}
 
 // HierarchyDescriptor is the public information representing a hierarchy.
 type HierarchyDescriptor struct {
@@ -276,6 +281,7 @@ func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *
 			URI:  make(core.URIPath, 0),
 			Time: make(core.TimePath, 0),
 		},
+		KeyType: KeyTypeMaster,
 	}
 
 	return hd, decryptionKey, nil
@@ -284,8 +290,11 @@ func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *
 // DelegateRaw takes as input a decryption key, and outputs another decryption
 // key whose capability is qualified. The returned key is safe to give to
 // another entity.
-func DelegateRaw(random io.Reader, from *DecryptionKey, perm *Permission) (*DecryptionKey, error) {
-	attrs := perm.AttributeSet(from.KeyType)
+func DelegateRaw(random io.Reader, from *DecryptionKey, perm *Permission, keyType int) (*DecryptionKey, error) {
+	if !keyTypeCompatible(from.KeyType, keyType) {
+		panic("Incompatible key type")
+	}
+	attrs := perm.AttributeSet(keyType)
 
 	t, err := oaque.RandomInZp(random)
 	if err != nil {
@@ -371,11 +380,14 @@ func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntityS
 // compatible with permission inheritance. If the destination entity has made
 // broadening delegations to other entities, they will inherit this key if it
 // is "narrower" than the permissions conveyed in those broadening delegations.
-func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *EntityDescriptor, perm *Permission) (*BroadeningDelegationWithKey, error) {
-	attrs := perm.AttributeSet(from.KeyType)
+func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *EntityDescriptor, perm *Permission, keyType int) (*BroadeningDelegationWithKey, error) {
+	if !keyTypeCompatible(from.KeyType, keyType) {
+		panic("Incompatible key type")
+	}
+	attrs := perm.AttributeSet(keyType)
 	attrs[MaxURIDepth+TimeDepth] = from.Hierarchy.HashToZp()
 
-	key, err := DelegateRaw(random, from, perm)
+	key, err := DelegateRaw(random, from, perm, keyType)
 	if err != nil {
 		return nil, err
 	}
@@ -435,6 +447,7 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 		Hierarchy:   first.Hierarchy,
 		Key:         key,
 		Permissions: perm,
+		KeyType:     keyType,
 	}
 }
 
@@ -651,13 +664,13 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 	// Now, of the provided keys, check which ones can provide at least parts of
 	// the specified permissions.
 	for _, key := range keys {
-		if key.KeyType != keyType {
+		if !keyTypeCompatible(key.KeyType, keyType) {
 			continue
 		}
 		kperm := key.Permissions
 		if kperm.Contains(perm) {
 			// We can generate the key exactly.
-			nkey, err := DelegateBroadeningWithKey(random, key, to, perm)
+			nkey, err := DelegateBroadeningWithKey(random, key, to, perm, keyType)
 			if err != nil {
 				return nil, err
 			}
@@ -669,7 +682,7 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 			nkey, err := DelegateBroadeningWithKey(random, key, to, &Permission{
 				URI:  perm.URI,
 				Time: kperm.Time,
-			})
+			}, keyType)
 			if err != nil {
 				return nil, err
 			}
@@ -679,7 +692,7 @@ func DelegateFull(random io.Reader, hd *HierarchyDescriptor, from *EntitySecret,
 			nkey, err := DelegateBroadeningWithKey(random, key, to, &Permission{
 				URI:  kperm.URI,
 				Time: perm.Time,
-			})
+			}, keyType)
 			if err != nil {
 				return nil, err
 			}

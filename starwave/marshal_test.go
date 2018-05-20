@@ -55,7 +55,7 @@ func TestBroadeningDelegationWithMarshalling(t *testing.T) {
 	remarshalHelper(reader)
 	remarshalHelper(rsecret)
 
-	d1, err := DelegateBroadeningWithKey(rand.Reader, master, intermediate1, perm)
+	d1, err := DelegateBroadeningWithKey(rand.Reader, master, intermediate1, perm, KeyTypeDecryption)
 	if err != nil {
 		t.Fatal(err)
 	}
