@@ -483,7 +483,9 @@ func Sign(s *big.Int, params *Params, key *PrivateKey, attrs AttributeList, mess
 }
 
 // SignPrecomputed produces a signature for the provided message hash, using the
-// provided precomputation to speed up the process.
+// provided precomputation to speed up the process. The signature may be
+// produced on a more specialized attribute list than the key; alternatively,
+// ATTRS may be left a nil if this is not needed.
 func SignPrecomputed(s *big.Int, params *Params, key *PrivateKey, attrs AttributeList, precomputed *PreparedAttributeList, message *big.Int) (*Signature, error) {
 	signature := new(Signature)
 
@@ -506,12 +508,14 @@ func SignPrecomputed(s *big.Int, params *Params, key *PrivateKey, attrs Attribut
 	signature.A0.Add(signature.A0, new(bn256.G1).ScalarMult(prodexp, s))
 
 	// In case the ATTRS parameter is more specialized than the provided key
-	for attrIndex, idx := range key.FreeMap {
-		if attr, ok := attrs[attrIndex]; ok {
-			if attr != nil {
-				attrTerm := new(bn256.G1).Set(key.B[idx])
-				attrTerm.ScalarMult(attrTerm, attr)
-				signature.A0.Add(signature.A0, attrTerm)
+	if attrs != nil {
+		for attrIndex, idx := range key.FreeMap {
+			if attr, ok := attrs[attrIndex]; ok {
+				if attr != nil {
+					attrTerm := new(bn256.G1).Set(key.B[idx])
+					attrTerm.ScalarMult(attrTerm, attr)
+					signature.A0.Add(signature.A0, attrTerm)
+				}
 			}
 		}
 	}
