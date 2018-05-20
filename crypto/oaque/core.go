@@ -479,12 +479,12 @@ func DecryptWithMaster(master *MasterKey, ciphertext *Ciphertext) *bn256.GT {
 // Sign produces a signature for the provided message hash, using the provided
 // private key.
 func Sign(s *big.Int, params *Params, key *PrivateKey, attrs AttributeList, message *big.Int) (*Signature, error) {
-	return SignPrecomputed(s, params, key, PrepareAttributeSet(params, attrs), message)
+	return SignPrecomputed(s, params, key, attrs, PrepareAttributeSet(params, attrs), message)
 }
 
 // SignPrecomputed produces a signature for the provided message hash, using the
 // provided precomputation to speed up the process.
-func SignPrecomputed(s *big.Int, params *Params, key *PrivateKey, precomputed *PreparedAttributeList, message *big.Int) (*Signature, error) {
+func SignPrecomputed(s *big.Int, params *Params, key *PrivateKey, attrs AttributeList, precomputed *PreparedAttributeList, message *big.Int) (*Signature, error) {
 	signature := new(Signature)
 
 	// Randomly choose s in Zp
@@ -504,6 +504,17 @@ func SignPrecomputed(s *big.Int, params *Params, key *PrivateKey, precomputed *P
 	prodexp := new(bn256.G1).ScalarMult(params.HSig, message)
 	prodexp.Add(prodexp, (*bn256.G1)(precomputed))
 	signature.A0.Add(signature.A0, new(bn256.G1).ScalarMult(prodexp, s))
+
+	// In case the ATTRS parameter is more specialized than the provided key
+	for attrIndex, idx := range key.FreeMap {
+		if attr, ok := attrs[attrIndex]; ok {
+			if attr != nil {
+				attrTerm := new(bn256.G1).Set(key.B[idx])
+				attrTerm.ScalarMult(attrTerm, attr)
+				signature.A0.Add(signature.A0, attrTerm)
+			}
+		}
+	}
 
 	return signature, nil
 }

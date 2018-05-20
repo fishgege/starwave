@@ -724,7 +724,7 @@ func SignCachedBenchmarkHelper(b *testing.B, numAttributes int) {
 		precomputed := PrepareAttributeSet(params, attrs)
 
 		b.StartTimer()
-		_, err = SignPrecomputed(nil, params, key, precomputed, message)
+		_, err = SignPrecomputed(nil, params, key, attrs, precomputed, message)
 		b.StopTimer()
 
 		if err != nil {
