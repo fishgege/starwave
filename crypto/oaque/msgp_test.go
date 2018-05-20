@@ -12,12 +12,11 @@ import (
 //go:generate msgp -o=msgp_gen_test.go -marshal=false -tests=false
 
 type TestMessage struct {
-	Params          *Params
-	MasterKey       *MasterKey
-	PrivateKey      *PrivateKey
-	Signature       *Signature
-	SignatureParams *SignatureParams
-	Ciphertext      *Ciphertext
+	Params     *Params
+	MasterKey  *MasterKey
+	PrivateKey *PrivateKey
+	Signature  *Signature
+	Ciphertext *Ciphertext
 }
 
 func TestMsgpEncodings(t *testing.T) {
@@ -26,17 +25,12 @@ func TestMsgpEncodings(t *testing.T) {
 	attrs1 := AttributeList{3: big.NewInt(108), 6: big.NewInt(88)}
 
 	// Set up parameters
-	params, key, err := Setup(rand.Reader, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sigparams, err := SignatureSetup(rand.Reader)
+	params, key, err := Setup(rand.Reader, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	tm.Params = params
-	tm.SignatureParams = sigparams
 	tm.MasterKey = key
 
 	// Come up with a message to encrypt
@@ -57,7 +51,7 @@ func TestMsgpEncodings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	signature, err := Sign(nil, params, sigparams, privkey, smessage)
+	signature, err := Sign(nil, params, privkey, attrs1, smessage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +88,7 @@ func TestMsgpEncodings(t *testing.T) {
 	}
 
 	// Verify the signature
-	correct := Verify(tm.Params, tm.SignatureParams, attrs1, tm.Signature, smessage)
+	correct := Verify(tm.Params, attrs1, tm.Signature, smessage)
 	if !correct {
 		t.Fatal("Signature was not successfully verified")
 	}

@@ -21,31 +21,15 @@ func (o *Params) UnmarshalMsg(from []byte) ([]byte, error) {
 	return unmarshalMsg(o, from)
 }
 func (o *Params) Msgsize() int {
-	return ((6 + len(o.H)) << geShift) + 6
+	hasSigElem := 0
+	if o.HSig != nil {
+		hasSigElem = 1
+	}
+	return ((6 + hasSigElem + len(o.H)) << geShift) + 1 + 6
 }
 
 // DecodeMsg allows objects to be msgp decoded
 func (o *Params) DecodeMsg(r *msgp.Reader) error {
-	return decodeMsg(o, r)
-}
-
-// EncodeMsg allows objects to be msgp encoded
-func (o *SignatureParams) EncodeMsg(w *msgp.Writer) error {
-	return encodeMsg(o, w)
-}
-
-// MarshalMsg allows objects to be msgp marshalled
-func (o *SignatureParams) MarshalMsg(onto []byte) ([]byte, error) {
-	return marshalMsg(o, onto)
-}
-
-// UnmarshalMsg allows objects to be msgp unmarshalled
-func (o *SignatureParams) UnmarshalMsg(from []byte) ([]byte, error) {
-	return unmarshalMsg(o, from)
-}
-
-// DecodeMsg allows objects to be msgp decoded
-func (o *SignatureParams) DecodeMsg(r *msgp.Reader) error {
 	return decodeMsg(o, r)
 }
 
@@ -93,7 +77,11 @@ func (o *PrivateKey) DecodeMsg(r *msgp.Reader) error {
 }
 
 func (o *PrivateKey) Msgsize() int {
-	return ((3+len(o.B))<<geShift + len(o.B)*attributeIndexSize) + 6
+	hasSigElem := 0
+	if o.BSig != nil {
+		hasSigElem = 1
+	}
+	return (3+len(o.B)+hasSigElem)<<geShift + len(o.B)*attributeIndexSize + 1 + 6
 }
 
 // EncodeMsg allows objects to be msgp encoded
@@ -116,6 +104,10 @@ func (o *Ciphertext) DecodeMsg(r *msgp.Reader) error {
 	return decodeMsg(o, r)
 }
 
+func (o *Ciphertext) Msgsize() int {
+	return 5 << geShift
+}
+
 // EncodeMsg allows objects to be msgp encoded
 func (o *Signature) EncodeMsg(w *msgp.Writer) error {
 	return encodeMsg(o, w)
@@ -129,6 +121,10 @@ func (o *Signature) MarshalMsg(onto []byte) ([]byte, error) {
 // UnmarshalMsg allows objects to be msgp unmarshalled
 func (o *Signature) UnmarshalMsg(from []byte) ([]byte, error) {
 	return unmarshalMsg(o, from)
+}
+
+func (o *Signature) Msgsize() int {
+	return 3 << geShift
 }
 
 // DecodeMsg allows objects to be msgp decoded

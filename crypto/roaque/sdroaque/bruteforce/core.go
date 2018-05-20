@@ -63,7 +63,7 @@ func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 
 	// The first attribute represents i in S_{ij}. The latter ceil(log2(n) represents
 	// j in S_{ij}.
-	params.params, masterKey.masterKey, err = oaque.Setup(random, (1+*params.height)+l)
+	params.params, masterKey.masterKey, err = oaque.Setup(random, (1+*params.height)+l, false)
 	if err != nil {
 		return nil, nil, err
 	}

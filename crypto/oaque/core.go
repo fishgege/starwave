@@ -15,22 +15,17 @@ import (
 
 // Params represents the system parameters for an OAQUE cryptosystem.
 type Params struct {
-	G  *bn256.G2
-	G1 *bn256.G2
-	G2 *bn256.G1
-	G3 *bn256.G1
-	H  []*bn256.G1
+	G    *bn256.G2
+	G1   *bn256.G2
+	G2   *bn256.G1
+	G3   *bn256.G1
+	HSig *bn256.G1
+	H    []*bn256.G1
 
 	// Some cached state
 	Pairing atomic.Value
 	// If the pairing is unset, it will be set while holding this mutex
 	PairingMutex sync.Mutex
-}
-
-// SignatureParams represents additional system parameters for OAQUE signatures.
-type SignatureParams struct {
-	U0 *bn256.G1
-	U1 *bn256.G1
 }
 
 // MasterKey represents the key for a hierarchy that can create a key for any
@@ -54,7 +49,7 @@ type AttributeIndex int
 // your program to crash.
 type AttributeList map[AttributeIndex]*big.Int
 
-// MaximumDepth returns the number of attributes supported. This was specified
+// NumAttributes returns the number of attributes supported. This was specified
 // via the "l" argument when Setup was called.
 func (params *Params) NumAttributes() int {
 	return len(params.H)
@@ -66,6 +61,7 @@ func (params *Params) NumAttributes() int {
 type PrivateKey struct {
 	A0      *bn256.G1
 	A1      *bn256.G2
+	BSig    *bn256.G1
 	B       []*bn256.G1
 	FreeMap map[AttributeIndex]int
 }
@@ -79,13 +75,12 @@ type Ciphertext struct {
 
 // Signature represents a signature over an integer in Zp.
 type Signature struct {
-	S1 *bn256.G1
-	S2 *bn256.G2
-	S3 *bn256.G2
+	A0 *bn256.G1
+	A1 *bn256.G2
 }
 
 // PreparedAttributeList represents an attribute set that has been "prepared"
-// for fast encryption or fast verification in a particular OAQUE system.
+// for fast encryption, signing, or verification in a particular OAQUE system.
 type PreparedAttributeList bn256.G1
 
 // FreeAttributes returns the indexes of unbound attributes.
@@ -99,8 +94,8 @@ func (privkey *PrivateKey) FreeAttributes() []AttributeIndex {
 
 // Setup generates the system parameters, which may be made visible to an
 // adversary. The parameter "l" is the total number of attributes supported
-// (indexed from 1 to l-1).
-func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
+// (indexed from 0 to l-1).
+func Setup(random io.Reader, l int, supportSignatures bool) (*Params, *MasterKey, error) {
 	params := new(Params)
 	var err error
 
@@ -122,20 +117,22 @@ func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
 	params.G1 = new(bn256.G2).ScalarMult(params.G, alpha)
 
 	// Randomly choose g2 and g3.
-	_, params.G2, err = bn256.RandomG1(random)
-	if err != nil {
+	if _, params.G2, err = bn256.RandomG1(random); err != nil {
 		return nil, nil, err
 	}
-	_, params.G3, err = bn256.RandomG1(random)
-	if err != nil {
+	if _, params.G3, err = bn256.RandomG1(random); err != nil {
 		return nil, nil, err
 	}
 
-	// Randomly choose h1 ... hl.
+	// Randomly choose h1 ... hl. An extra slot is used for signatures.
+	if supportSignatures {
+		if _, params.HSig, err = bn256.RandomG1(random); err != nil {
+			return nil, nil, err
+		}
+	}
 	params.H = make([]*bn256.G1, l, l)
 	for i := range params.H {
-		_, params.H[i], err = bn256.RandomG1(random)
-		if err != nil {
+		if _, params.H[i], err = bn256.RandomG1(random); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -144,25 +141,6 @@ func Setup(random io.Reader, l int) (*Params, *MasterKey, error) {
 	master := new(bn256.G1).ScalarMult(params.G2, alpha)
 
 	return params, (*MasterKey)(master), nil
-}
-
-// SignatureSetup generates the additional system parameters needed to support
-// OAQUE signatures.
-func SignatureSetup(random io.Reader) (*SignatureParams, error) {
-	params := new(SignatureParams)
-	var err error
-
-	_, params.U0, err = bn256.RandomG1(random)
-	if err != nil {
-		return nil, err
-	}
-
-	_, params.U1, err = bn256.RandomG1(random)
-	if err != nil {
-		return nil, err
-	}
-
-	return params, nil
 }
 
 // RandomInZp returns an element chosen from Zp uniformly at random, using the
@@ -211,6 +189,9 @@ func KeyGen(r *big.Int, params *Params, master *MasterKey, attrs AttributeList) 
 			j++
 		}
 	}
+	if params.HSig != nil {
+		key.BSig = new(bn256.G1).ScalarMult(params.HSig, r)
+	}
 	product.ScalarMult(product, r)
 
 	key.A0 = new(bn256.G1).Add((*bn256.G1)(master), product)
@@ -247,6 +228,9 @@ func NonDelegableKeyFromMaster(params *Params, master *MasterKey, attrs Attribut
 			key.FreeMap[attrIndex] = j
 			j++
 		}
+	}
+	if params.HSig != nil {
+		key.BSig = new(bn256.G1).Set(params.HSig)
 	}
 
 	key.A0 = new(bn256.G1).Add((*bn256.G1)(master), product)
@@ -306,6 +290,10 @@ func QualifyKey(t *big.Int, params *Params, qualify *PrivateKey, attrs Attribute
 			}
 		}
 	}
+	if params.HSig != nil && qualify.BSig != nil {
+		key.BSig = new(bn256.G1).ScalarMult(params.HSig, t)
+		key.BSig.Add(qualify.BSig, key.BSig)
+	}
 	product.ScalarMult(product, t)
 
 	key.A0.Add(key.A0, product)
@@ -350,6 +338,9 @@ func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *
 			bIndex++
 		}
 	}
+	if qualify.BSig != nil {
+		key.BSig = qualify.BSig
+	}
 
 	return key
 }
@@ -361,13 +352,11 @@ func NonDelegableKey(params *Params, qualify *PrivateKey, attrs AttributeList) *
 // function takes longer to execute. If delegable is false, the resulting
 // private key cannot be used with QualifyKey or NonDelegableKey, but resampling
 // is faster.
-// Because each private key produces a disjoint distribution of signatures for
-// messages, resampling the key before producing a signature allows for
-// "anonymous" signature.
 func ResampleKey(t *big.Int, params *Params, precomputed *PreparedAttributeList, key *PrivateKey, delegable bool) (*PrivateKey, error) {
 	resampled := &PrivateKey{
-		A0: new(bn256.G1),
-		A1: new(bn256.G2),
+		A0:   new(bn256.G1),
+		A1:   new(bn256.G2),
+		BSig: new(bn256.G1),
 	}
 
 	// Randomly choose t in Zp
@@ -384,6 +373,11 @@ func ResampleKey(t *big.Int, params *Params, precomputed *PreparedAttributeList,
 
 	resampled.A1.ScalarMult(params.G, t)
 	resampled.A1.Add(resampled.A1, key.A1)
+
+	if params.HSig != nil && key.BSig != nil {
+		resampled.BSig.ScalarMult(params.HSig, t)
+		resampled.BSig.Add(resampled.BSig, key.BSig)
+	}
 
 	if delegable {
 		resampled.B = make([]*bn256.G1, len(key.B), cap(key.B))
@@ -420,7 +414,7 @@ func Encrypt(s *big.Int, params *Params, attrs AttributeList, message *bn256.GT)
 	return EncryptPrecomputed(s, params, PrepareAttributeSet(params, attrs), message)
 }
 
-// PrecomputeAttributeSet performs precomputation for the provided attribute
+// PrepareAttributeSet performs precomputation for the provided attribute
 // list, to speed up future encryption or verification. with that attribute list.
 // The returned precomputed result can be safely reused multiple times. This can
 // be useful if you are repeatedly encrypting messages or verifying signatures
@@ -484,7 +478,13 @@ func DecryptWithMaster(master *MasterKey, ciphertext *Ciphertext) *bn256.GT {
 
 // Sign produces a signature for the provided message hash, using the provided
 // private key.
-func Sign(s *big.Int, params *Params, sigparams *SignatureParams, key *PrivateKey, message *big.Int) (*Signature, error) {
+func Sign(s *big.Int, params *Params, key *PrivateKey, attrs AttributeList, message *big.Int) (*Signature, error) {
+	return SignPrecomputed(s, params, key, PrepareAttributeSet(params, attrs), message)
+}
+
+// SignPrecomputed produces a signature for the provided message hash, using the
+// provided precomputation to speed up the process.
+func SignPrecomputed(s *big.Int, params *Params, key *PrivateKey, precomputed *PreparedAttributeList, message *big.Int) (*Signature, error) {
 	signature := new(Signature)
 
 	// Randomly choose s in Zp
@@ -496,40 +496,36 @@ func Sign(s *big.Int, params *Params, sigparams *SignatureParams, key *PrivateKe
 		}
 	}
 
-	signature.S1 = new(bn256.G1).ScalarMult(sigparams.U1, message)
-	signature.S1.Add(signature.S1, sigparams.U0)
-	signature.S1.ScalarMult(signature.S1, s)
-	signature.S1.Add(key.A0, signature.S1)
+	signature.A0 = new(bn256.G1).ScalarMult(key.BSig, message)
+	signature.A0.Add(signature.A0, key.A0)
+	signature.A1 = new(bn256.G2).ScalarMult(params.G, s)
+	signature.A1.Add(signature.A1, key.A1)
 
-	signature.S2 = key.A1
-
-	signature.S3 = new(bn256.G2).ScalarMult(params.G, s)
+	prodexp := new(bn256.G1).ScalarMult(params.HSig, message)
+	prodexp.Add(prodexp, (*bn256.G1)(precomputed))
+	signature.A0.Add(signature.A0, new(bn256.G1).ScalarMult(prodexp, s))
 
 	return signature, nil
 }
 
 // Verify verifies that the provided signature was produced using an OAQUE
 // private key corresponding to the provided attribute set.
-func Verify(params *Params, sigparams *SignatureParams, attrs AttributeList, signature *Signature, message *big.Int) bool {
-	return VerifyPrecomputed(params, sigparams, PrepareAttributeSet(params, attrs), signature, message)
+func Verify(params *Params, attrs AttributeList, signature *Signature, message *big.Int) bool {
+	return VerifyPrecomputed(params, PrepareAttributeSet(params, attrs), signature, message)
 }
 
 // VerifyPrecomputed verifies the provided signature, using the provided
 // precomputation to speed up the process.
-func VerifyPrecomputed(params *Params, sigparams *SignatureParams, precomputed *PreparedAttributeList, signature *Signature, message *big.Int) bool {
-	lhs := bn256.Pair(signature.S1, params.G)
+func VerifyPrecomputed(params *Params, precomputed *PreparedAttributeList, signature *Signature, message *big.Int) bool {
+	lhs := bn256.Pair(signature.A0, params.G)
 
 	params.Precache()
 	pairing := params.Pairing.Load().(*bn256.GT)
 
-	rhs2 := bn256.Pair((*bn256.G1)(precomputed), signature.S2)
+	prodexp := new(bn256.G1).ScalarMult(params.HSig, message)
+	prodexp.Add(prodexp, (*bn256.G1)(precomputed))
+	rhs := bn256.Pair(prodexp, signature.A1)
+	rhs.Add(pairing, rhs)
 
-	mrep := new(bn256.G1).ScalarMult(sigparams.U1, message)
-	mrep.Add(sigparams.U0, mrep)
-	rhs3 := bn256.Pair(mrep, signature.S3)
-
-	rhs2.Add(pairing, rhs2)
-	rhs2.Add(rhs2, rhs3)
-
-	return bytes.Equal(lhs.Marshal(), rhs2.Marshal())
+	return bytes.Equal(lhs.Marshal(), rhs.Marshal())
 }

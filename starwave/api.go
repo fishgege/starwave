@@ -225,7 +225,7 @@ const (
 func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *DecryptionKey, error) {
 	numSlots := MaxURIDepth + TimeDepth
 
-	params, masterKey, err := oaque.Setup(rand.Reader, numSlots)
+	params, masterKey, err := oaque.Setup(rand.Reader, numSlots, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -288,7 +288,7 @@ func CreateEntity(random io.Reader, nickname string) (*EntityDescriptor, *Entity
 	// One extra slot at the end, for the hierarchy name
 	numSlots := MaxURIDepth + TimeDepth + 1
 
-	params, masterKey, err := oaque.Setup(rand.Reader, numSlots)
+	params, masterKey, err := oaque.Setup(rand.Reader, numSlots, false)
 	if err != nil {
 		return nil, nil, err
 	}

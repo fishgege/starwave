@@ -88,22 +88,6 @@ func (z *TestMessage) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
-		case "SignatureParams":
-			if dc.IsNil() {
-				err = dc.ReadNil()
-				if err != nil {
-					return
-				}
-				z.SignatureParams = nil
-			} else {
-				if z.SignatureParams == nil {
-					z.SignatureParams = new(SignatureParams)
-				}
-				err = z.SignatureParams.DecodeMsg(dc)
-				if err != nil {
-					return
-				}
-			}
 		case "Ciphertext":
 			if dc.IsNil() {
 				err = dc.ReadNil()
@@ -132,9 +116,9 @@ func (z *TestMessage) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *TestMessage) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 6
+	// map header, size 5
 	// write "Params"
-	err = en.Append(0x86, 0xa6, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73)
+	err = en.Append(0x85, 0xa6, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73)
 	if err != nil {
 		return err
 	}
@@ -197,22 +181,6 @@ func (z *TestMessage) EncodeMsg(en *msgp.Writer) (err error) {
 			return
 		}
 	}
-	// write "SignatureParams"
-	err = en.Append(0xaf, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73)
-	if err != nil {
-		return err
-	}
-	if z.SignatureParams == nil {
-		err = en.WriteNil()
-		if err != nil {
-			return
-		}
-	} else {
-		err = z.SignatureParams.EncodeMsg(en)
-		if err != nil {
-			return
-		}
-	}
 	// write "Ciphertext"
 	err = en.Append(0xaa, 0x43, 0x69, 0x70, 0x68, 0x65, 0x72, 0x74, 0x65, 0x78, 0x74)
 	if err != nil {
@@ -228,6 +196,41 @@ func (z *TestMessage) EncodeMsg(en *msgp.Writer) (err error) {
 		if err != nil {
 			return
 		}
+	}
+	return
+}
+
+// Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
+func (z *TestMessage) Msgsize() (s int) {
+	s = 1 + 7
+	if z.Params == nil {
+		s += msgp.NilSize
+	} else {
+		s += z.Params.Msgsize()
+	}
+	s += 10
+	if z.MasterKey == nil {
+		s += msgp.NilSize
+	} else {
+		s += z.MasterKey.Msgsize()
+	}
+	s += 11
+	if z.PrivateKey == nil {
+		s += msgp.NilSize
+	} else {
+		s += z.PrivateKey.Msgsize()
+	}
+	s += 10
+	if z.Signature == nil {
+		s += msgp.NilSize
+	} else {
+		s += z.Signature.Msgsize()
+	}
+	s += 11
+	if z.Ciphertext == nil {
+		s += msgp.NilSize
+	} else {
+		s += z.Ciphertext.Msgsize()
 	}
 	return
 }

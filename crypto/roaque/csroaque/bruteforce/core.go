@@ -62,7 +62,7 @@ func BuildBEtree(random io.Reader, l int, left int, right int) (*paramsNode, *ma
 	mNode := &masterKeyNode{}
 	var err error
 
-	pNode.params, mNode.masterKey, err = oaque.Setup(random, l)
+	pNode.params, mNode.masterKey, err = oaque.Setup(random, l, false)
 	if err != nil {
 		return nil, nil, err
 	}

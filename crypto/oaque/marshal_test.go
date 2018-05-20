@@ -11,7 +11,7 @@ func TestEncryptionMarshalling(t *testing.T) {
 	attrs1 := AttributeList{3: big.NewInt(108), 6: big.NewInt(88)}
 
 	// Set up parameters
-	params, key, err := Setup(rand.Reader, 10)
+	params, key, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +62,7 @@ func TestSignatureMarshalling(t *testing.T) {
 	attrs1 := AttributeList{3: big.NewInt(108), 6: big.NewInt(88)}
 
 	// Set up parameters
-	params, key, err := Setup(rand.Reader, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sigparams, err := SignatureSetup(rand.Reader)
+	params, key, err := Setup(rand.Reader, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,13 +72,6 @@ func TestSignatureMarshalling(t *testing.T) {
 	ok := params.Unmarshal(parambytes)
 	if !ok {
 		t.Fatal("Could not unmarshal Params")
-	}
-
-	sigparambytes := sigparams.Marshal()
-	sigparams = new(SignatureParams)
-	ok = sigparams.Unmarshal(sigparambytes)
-	if !ok {
-		t.Fatal("Could not unmarshal SignatureParams")
 	}
 
 	// Come up with a message to encrypt
@@ -104,7 +93,7 @@ func TestSignatureMarshalling(t *testing.T) {
 	}
 
 	// Sign a message under the top level public key
-	signature, err := Sign(nil, params, sigparams, privkey, message)
+	signature, err := Sign(nil, params, privkey, attrs1, message)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +106,7 @@ func TestSignatureMarshalling(t *testing.T) {
 	}
 
 	// Verify the signature
-	correct := Verify(params, sigparams, attrs1, signature, message)
+	correct := Verify(params, attrs1, signature, message)
 	if !correct {
 		t.Fatal("Signature was not successfully verified")
 	}

@@ -23,7 +23,7 @@ type EntitySystem struct {
 // for orthogonality. The master key has a different type, whereas all private
 // keys have the same type.
 func CreateTopLevel() StarWaveKey {
-	params, masterKey, err := oaque.Setup(rand.Reader, MaxURILength+MaxTimeLength)
+	params, masterKey, err := oaque.Setup(rand.Reader, MaxURILength+MaxTimeLength, false)
 	if err != nil {
 		panic(err)
 	}

@@ -30,8 +30,8 @@ func encryptHelper(t *testing.T, params *Params, attrs AttributeList, message *b
 	return ciphertext
 }
 
-func verifyHelper(t *testing.T, params *Params, sigparams *SignatureParams, attrs AttributeList, signature *Signature, message *big.Int) {
-	correct := Verify(params, sigparams, attrs, signature, message)
+func verifyHelper(t *testing.T, params *Params, attrs AttributeList, signature *Signature, message *big.Int) {
+	correct := Verify(params, attrs, signature, message)
 	if !correct {
 		t.Fatal("Signature is invalid")
 	}
@@ -61,8 +61,8 @@ func decryptAndCheckHelper(t *testing.T, key *PrivateKey, ciphertext *Ciphertext
 	}
 }
 
-func signHelper(t *testing.T, params *Params, sigparams *SignatureParams, key *PrivateKey, message *big.Int) *Signature {
-	signature, err := Sign(nil, params, sigparams, key, message)
+func signHelper(t *testing.T, params *Params, key *PrivateKey, attrs AttributeList, message *big.Int) *Signature {
+	signature, err := Sign(nil, params, key, attrs, message)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func signHelper(t *testing.T, params *Params, sigparams *SignatureParams, key *P
 
 func attributeFromMasterHelper(t *testing.T, attrs AttributeList) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,11 +90,7 @@ func attributeFromMasterHelper(t *testing.T, attrs AttributeList) {
 
 func attributeFromMasterSignatureHelper(t *testing.T, attrs AttributeList) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sigparams, err := SignatureSetup(rand.Reader)
+	params, masterkey, err := Setup(rand.Reader, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,10 +102,10 @@ func attributeFromMasterSignatureHelper(t *testing.T, attrs AttributeList) {
 	key := genFromMasterHelper(t, params, masterkey, attrs)
 
 	// Sign the message
-	signature := signHelper(t, params, sigparams, key, message)
+	signature := signHelper(t, params, key, attrs, message)
 
 	// Verify the signature
-	verifyHelper(t, params, sigparams, attrs, signature, message)
+	verifyHelper(t, params, attrs, signature, message)
 }
 
 func TestSingleAttributeEncryption(t *testing.T) {
@@ -138,7 +134,7 @@ func TestMultipleSparseAttributesSignature(t *testing.T) {
 
 func TestQualifyKey(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +157,7 @@ func TestQualifyKey(t *testing.T) {
 
 func TestNonDelegableKey(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +180,7 @@ func TestNonDelegableKey(t *testing.T) {
 
 func TestDecryptWithMaster(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +202,7 @@ func TestDecryptWithMaster(t *testing.T) {
 
 func TestNonDelegableKeyFromMaster(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +223,7 @@ func TestNonDelegableKeyFromMaster(t *testing.T) {
 
 func TestPartialDelegation(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +254,7 @@ func TestPartialDelegation(t *testing.T) {
 
 func TestResampleKey(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +281,7 @@ func TestResampleKey(t *testing.T) {
 
 func TestAdditiveRandomness(t *testing.T) {
 	// Set up parameters
-	params, masterkey, err := Setup(rand.Reader, 10)
+	params, masterkey, err := Setup(rand.Reader, 10, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +359,7 @@ func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
 
 func BenchmarkSetup(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _, err := Setup(rand.Reader, 20)
+		_, _, err := Setup(rand.Reader, 20, true)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -374,7 +370,7 @@ func EncryptBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, _, err := Setup(rand.Reader, 20)
+	params, _, err := Setup(rand.Reader, 20, false)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -423,7 +419,7 @@ func EncryptCachedBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, _, err := Setup(rand.Reader, 20)
+	params, _, err := Setup(rand.Reader, 20, false)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -474,7 +470,7 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 20, false)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -533,7 +529,7 @@ func DecryptWithMasterBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 20, false)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -587,7 +583,7 @@ func NonDelegableKeyBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 20, false)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -647,11 +643,7 @@ func SignBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
-	if err != nil {
-		b.Fatal(err)
-	}
-	sigparams, err := SignatureSetup(rand.Reader)
+	params, master, err := Setup(rand.Reader, 20, true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -676,7 +668,7 @@ func SignBenchmarkHelper(b *testing.B, numAttributes int) {
 		}
 
 		b.StartTimer()
-		_, err = Sign(nil, params, sigparams, key, message)
+		_, err = Sign(nil, params, key, attrs, message)
 		b.StopTimer()
 
 		if err != nil {
@@ -701,15 +693,11 @@ func BenchmarkSign_20(b *testing.B) {
 	SignBenchmarkHelper(b, 20)
 }
 
-func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
+func SignCachedBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
-	if err != nil {
-		b.Fatal(err)
-	}
-	sigparams, err := SignatureSetup(rand.Reader)
+	params, master, err := Setup(rand.Reader, 20, true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -733,13 +721,53 @@ func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
 			b.Fatal(err)
 		}
 
-		signature, err := Sign(nil, params, sigparams, key, message)
+		precomputed := PrepareAttributeSet(params, attrs)
+
+		b.StartTimer()
+		_, err = SignPrecomputed(nil, params, key, precomputed, message)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	// Set up parameters
+	params, master, err := Setup(rand.Reader, 20, true)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		message, err := RandomInZp(rand.Reader)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		attrs := make(AttributeList)
+		for i := 0; i != numAttributes; i++ {
+			attrs[AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(nil, params, master, attrs)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		signature, err := Sign(nil, params, key, attrs, message)
 		if err != nil {
 			b.Fatal(err)
 		}
 
 		b.StartTimer()
-		correct := Verify(params, sigparams, attrs, signature, message)
+		correct := Verify(params, attrs, signature, message)
 		b.StopTimer()
 
 		if !correct {
@@ -768,11 +796,7 @@ func VerifyCachedBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
-	if err != nil {
-		b.Fatal(err)
-	}
-	sigparams, err := SignatureSetup(rand.Reader)
+	params, master, err := Setup(rand.Reader, 20, true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -796,7 +820,7 @@ func VerifyCachedBenchmarkHelper(b *testing.B, numAttributes int) {
 			b.Fatal(err)
 		}
 
-		signature, err := Sign(nil, params, sigparams, key, message)
+		signature, err := Sign(nil, params, key, attrs, message)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -804,7 +828,7 @@ func VerifyCachedBenchmarkHelper(b *testing.B, numAttributes int) {
 		precomputed := PrepareAttributeSet(params, attrs)
 
 		b.StartTimer()
-		correct := VerifyPrecomputed(params, sigparams, precomputed, signature, message)
+		correct := VerifyPrecomputed(params, precomputed, signature, message)
 		b.StopTimer()
 
 		if !correct {
@@ -833,7 +857,7 @@ func ResampleKeyBenchmarkHelper(b *testing.B, numAttributes int, delegable bool)
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 20, true)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -885,7 +909,7 @@ func QualifyKeyStartBenchmarkHelper(b *testing.B, numAttributes int) {
 
 	for i := 0; i < b.N; i++ {
 		// Set up parameters
-		params, master, err := Setup(rand.Reader, 20)
+		params, master, err := Setup(rand.Reader, 20, false)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -939,7 +963,7 @@ func QualifyKeyEndBenchmarkHelper(b *testing.B, numAttributes int) {
 
 	for i := 0; i < b.N; i++ {
 		// Set up parameters
-		params, master, err := Setup(rand.Reader, 20)
+		params, master, err := Setup(rand.Reader, 20, false)
 		if err != nil {
 			b.Fatal(err)
 		}

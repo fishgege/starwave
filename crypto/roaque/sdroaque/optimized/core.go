@@ -88,7 +88,7 @@ func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 
 	// The first several ceil(log2(n)) slots represents i in S_{ij}. The latter ceil(log2(n) represents
 	// j in S_{ij}.
-	params.params, masterKey.masterKey, err = oaque.Setup(random, (*params.height+*params.height)+l)
+	params.params, masterKey.masterKey, err = oaque.Setup(random, (*params.height+*params.height)+l, false)
 	if err != nil {
 		return nil, nil, err
 	}

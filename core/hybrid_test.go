@@ -12,7 +12,7 @@ import (
 )
 
 func oaqueHelper(t *testing.T) (*oaque.Params, *oaque.PreparedAttributeList, *oaque.PrivateKey) {
-	params, master, err := oaque.Setup(rand.Reader, 20)
+	params, master, err := oaque.Setup(rand.Reader, 20, false)
 	if err != nil {
 		t.Fatal(err)
 	}

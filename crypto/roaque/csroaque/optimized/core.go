@@ -63,7 +63,7 @@ func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 	//	masterKey.userNumber = new(int)
 	//	*masterKey.userNumber = n
 
-	params.params, masterKey.masterKey, err = oaque.Setup(random, *params.userHeight+l)
+	params.params, masterKey.masterKey, err = oaque.Setup(random, *params.userHeight+l, false)
 	if err != nil {
 		return nil, nil, err
 	}
