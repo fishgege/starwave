@@ -160,12 +160,18 @@ type Encryptor struct {
 	Hierarchy   *HierarchyDescriptor
 	Permissions *Permission
 	Precomputed *oaque.PreparedAttributeList
+	SigningKey  *oaque.PrivateKey
+	Signer      *oaque.PreparedAttributeList
 }
 
 // Decryptor represents an object storing cached state that allows fast
 // decryption for a given attribute set. In particular, it caches the generation
 // of the private key for the exact attribute set.
-type Decryptor oaque.PrivateKey
+type Decryptor struct {
+	Params   *oaque.Params
+	Key      *oaque.PrivateKey
+	Verifier *oaque.PreparedAttributeList
+}
 
 // BroadeningDelegation represents a delegation of permissions, that allows
 // the grantee to "inherit" keys for narrower permissions obtained by the
@@ -254,7 +260,7 @@ const (
 func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *DecryptionKey, error) {
 	numSlots := MaxURIDepth + TimeDepth
 
-	params, masterKey, err := oaque.Setup(rand.Reader, numSlots, false)
+	params, masterKey, err := oaque.Setup(rand.Reader, numSlots, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -454,8 +460,8 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 // Encrypt takes a message and encrypts it under a set of permissions. Only with
 // a decryption key for those permissions or a broader set of permissions (an
 // attribute subset) can the message be decrypted.
-func Encrypt(random io.Reader, hd *HierarchyDescriptor, perm *Permission, message []byte) (*EncryptedMessage, error) {
-	e := PrepareEncryption(hd, perm)
+func Encrypt(random io.Reader, hd *HierarchyDescriptor, perm *Permission, signingKey *DecryptionKey, message []byte) (*EncryptedMessage, error) {
+	e := PrepareEncryption(hd, perm, signingKey)
 	return e.Encrypt(random, message)
 }
 
@@ -482,21 +488,30 @@ func EncryptWithSymmetricKey(random io.Reader, esymm *EncryptedSymmetricKey, sym
 // bytes (for use as a symmetric key), and returns a ciphertext of that key,
 // encrypted under the specified permissions. Note that the space of ciphertexts
 // has 256 bits of entropy, so symm should be at most 32 bytes.
-func GenerateEncryptedSymmetricKey(random io.Reader, hd *HierarchyDescriptor, perm *Permission, symm []byte) (*EncryptedSymmetricKey, error) {
-	e := PrepareEncryption(hd, perm)
+func GenerateEncryptedSymmetricKey(random io.Reader, hd *HierarchyDescriptor, perm *Permission, signingKey *DecryptionKey, symm []byte) (*EncryptedSymmetricKey, error) {
+	e := PrepareEncryption(hd, perm, signingKey)
 	return e.GenerateEncryptedSymmetricKey(random, symm)
 }
 
 // PrepareEncryption caches intermediate results for encryption under the
 // specified set of permissions, and returns an Encryptor containing those
 // cached results.
-func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission) *Encryptor {
+func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission, key *DecryptionKey) *Encryptor {
 	attrs := perm.AttributeSet(KeyTypeDecryption)
-	return &Encryptor{
+	signingAttrs := perm.AttributeSet(KeyTypeSignature)
+	encryptor := &Encryptor{
 		Hierarchy:   hd,
 		Permissions: perm,
 		Precomputed: oaque.PrepareAttributeSet(hd.Params, attrs),
 	}
+	if key != nil {
+		if !keyTypeCompatible(key.KeyType, KeyTypeDecryption) {
+			panic("Incorrect key type")
+		}
+		encryptor.SigningKey = oaque.NonDelegableKey(hd.Params, key.Key, signingAttrs)
+		encryptor.Signer = oaque.PrepareAttributeSet(hd.Params, signingAttrs)
+	}
+	return encryptor
 }
 
 // Encrypt is the same as the general "Encrypt" function, except that it uses
@@ -507,13 +522,23 @@ func (e *Encryptor) Encrypt(random io.Reader, message []byte) (*EncryptedMessage
 		return nil, err
 	}
 
-	return &EncryptedMessage{
+	em := &EncryptedMessage{
 		Key: &EncryptedSymmetricKey{
 			Ciphertext:  encryptedKey,
+			Signature:   nil,
 			Permissions: e.Permissions,
 		},
 		Message: encryptedMessage,
-	}, nil
+	}
+
+	if e.SigningKey != nil {
+		em.Key.Signature, err = oaque.SignPrecomputed(nil, e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, cryptutils.HashToZp(message))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return em, nil
 }
 
 // GenerateEncryptedSymmetricKey is the same as the general
@@ -532,9 +557,9 @@ func (e *Encryptor) GenerateEncryptedSymmetricKey(random io.Reader, symm []byte)
 
 // Decrypt converts an encrypted message into plaintext, as long as the provided
 // key has at least the necessary capability to decrypt the message.
-func Decrypt(c *EncryptedMessage, key *DecryptionKey) []byte {
+func Decrypt(c *EncryptedMessage, key *DecryptionKey, checkSignature bool) []byte {
 	d := PrepareDecryption(c.Key.Permissions, key)
-	return d.Decrypt(c)
+	return d.Decrypt(c, checkSignature)
 }
 
 // DecryptWithSymmetricKey is like Decrypt, but allows you to reuse the same
@@ -557,15 +582,31 @@ func DecryptSymmetricKey(c *EncryptedSymmetricKey, key *DecryptionKey, symm []by
 // PrepareDecryption caches intermediate results for decrypting messages
 // encrypted with exactly the set of permissions provided as the first argument.
 func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
+	if !keyTypeCompatible(key.KeyType, KeyTypeDecryption) {
+		panic("Incorrect key type")
+	}
 	attrs := perm.AttributeSet(KeyTypeDecryption)
 	childKey := oaque.NonDelegableKey(key.Hierarchy.Params, key.Key, attrs)
-	return (*Decryptor)(childKey)
+	attrs = perm.AttributeSet(KeyTypeSignature)
+	precomputed := oaque.PrepareAttributeSet(key.Hierarchy.Params, attrs)
+	return &Decryptor{
+		Params:   key.Hierarchy.Params,
+		Key:      childKey,
+		Verifier: precomputed,
+	}
 }
 
 // Decrypt is the same as the general "Decrypt" function, except that it uses
 // cached results in the decryptor to speed up the process.
-func (d *Decryptor) Decrypt(c *EncryptedMessage) []byte {
-	message, ok := core.HybridDecrypt(c.Key.Ciphertext, c.Message, (*oaque.PrivateKey)(d), &c.IV)
+func (d *Decryptor) Decrypt(c *EncryptedMessage, checkSignature bool) []byte {
+	ct := c.Key.Ciphertext
+	if checkSignature {
+		ok := oaque.VerifyPrecomputed(d.Params, d.Verifier, c.Key.Signature, cryptutils.HashToZp(ct.Marshal()))
+		if !ok {
+			return nil
+		}
+	}
+	message, ok := core.HybridDecrypt(ct, c.Message, d.Key, &c.IV)
 	if !ok {
 		return nil
 	}
@@ -576,7 +617,7 @@ func (d *Decryptor) Decrypt(c *EncryptedMessage) []byte {
 // function, except that it uses cached results in the decryptor to speed up the
 // process.
 func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte) []byte {
-	return core.DecryptSymmetricKey((*oaque.PrivateKey)(d), c.Ciphertext, symm)
+	return core.DecryptSymmetricKey(d.Key, c.Ciphertext, symm)
 }
 
 // DeriveKey takes as input a chain of delegations, and tries to derive the key

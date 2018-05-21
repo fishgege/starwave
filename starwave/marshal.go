@@ -336,6 +336,7 @@ func (esk *EncryptedSymmetricKey) Marshal() []byte {
 	buf := newMessageBuffer(1024, TypeEncryptedSymmetricKey)
 
 	buf = MarshalAppendWithLength(esk.Ciphertext, buf)
+	buf = MarshalAppendWithLength(esk.Signature, buf)
 	buf = MarshalAppendWithLength(esk.Permissions, buf)
 
 	return buf
@@ -348,6 +349,15 @@ func (esk *EncryptedSymmetricKey) Unmarshal(marshalled []byte) bool {
 	buf = UnmarshalPrefixWithLength(esk.Ciphertext, buf)
 	if buf == nil {
 		return false
+	}
+
+	esk.Signature = new(oaque.Signature)
+	buf = UnmarshalPrefixWithLength(esk.Signature, buf)
+	if buf == nil {
+		return false
+	}
+	if esk.Signature.A0 == nil {
+		esk.Signature = nil
 	}
 
 	esk.Permissions = new(Permission)

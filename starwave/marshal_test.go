@@ -94,13 +94,13 @@ func TestBroadeningDelegationWithMarshalling(t *testing.T) {
 
 	message := randomMessageHelper(t)
 
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, nil, message)
 	if err != nil {
 		t.Fatal(err)
 	}
 	remarshalHelper(emsg)
 
-	decrypted := Decrypt(emsg, key)
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}
@@ -183,13 +183,13 @@ func TestDelegationBundleWithMarshalling(t *testing.T) {
 
 	message := randomMessageHelper(t)
 
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, nil, message)
 	if err != nil {
 		t.Fatal(err)
 	}
 	remarshalHelper(emsg)
 
-	decrypted := Decrypt(emsg, key)
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}

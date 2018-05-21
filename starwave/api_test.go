@@ -42,12 +42,12 @@ func TestSimpleMessage(t *testing.T) {
 
 	message := randomMessageHelper(t)
 
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, nil, message)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	decrypted := Decrypt(emsg, key)
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}
@@ -70,7 +70,7 @@ func TestExplicitHybrid(t *testing.T) {
 	}
 
 	symm := make([]byte, 32)
-	esymm, err := GenerateEncryptedSymmetricKey(rand.Reader, hierarchy, perm, symm)
+	esymm, err := GenerateEncryptedSymmetricKey(rand.Reader, hierarchy, perm, nil, symm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,14 +106,19 @@ func TestGeneralRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	message := randomMessageHelper(t)
-
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	signingKey, err := DelegateRaw(rand.Reader, master, prefixperm, KeyTypeSignature)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	decrypted := Decrypt(emsg, key)
+	message := randomMessageHelper(t)
+
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, signingKey, message)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}
@@ -166,12 +171,12 @@ func TestBroadeningDelegation(t *testing.T) {
 
 	message := randomMessageHelper(t)
 
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, nil, message)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	decrypted := Decrypt(emsg, key)
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}
@@ -246,12 +251,12 @@ func TestDelegationBundleBroadening(t *testing.T) {
 
 	message := randomMessageHelper(t)
 
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, nil, message)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	decrypted := Decrypt(emsg, key)
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}
@@ -434,12 +439,12 @@ func TestDelegationBundleWithTransferredKeys(t *testing.T) {
 
 	message := randomMessageHelper(t)
 
-	emsg, err := Encrypt(rand.Reader, hierarchy, perm, message)
+	emsg, err := Encrypt(rand.Reader, hierarchy, perm, nil, message)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	decrypted := Decrypt(emsg, key)
+	decrypted := Decrypt(emsg, key, false)
 	if !bytes.Equal(message, decrypted) {
 		t.Fatal("Decrypted message is different from original message")
 	}
