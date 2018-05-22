@@ -147,7 +147,7 @@ func HelperSubscribe(b *testing.B, msgsize int, encrypt bool, disablecache bool)
 			b.Fatal(err)
 		}
 
-		po, err = cl.encryptPO(rand.Reader, hd, perm, po)
+		po, err = cl.encryptPO(rand.Reader, nsvk, hd, perm, po)
 		if po == nil {
 			b.Fatal("Could not encrypt payload object")
 		} else if err != nil {
@@ -428,7 +428,7 @@ func HelperBuildDOTChain(b *testing.B, crypto bool) {
 	b.StartTimer()
 	if crypto {
 		for i := 0; i < b.N; i++ {
-			key, err := cl.ObtainKey(nsvk, perm)
+			key, err := cl.ObtainKey(nsvk, perm, starwave.KeyTypeDecryption)
 			if key == nil {
 				panic("ObtainKey failed")
 			} else if err != nil {

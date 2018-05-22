@@ -20,6 +20,8 @@ import (
 	"github.com/ucbrise/starwave/starwave"
 )
 
+const SignMessages = true
+
 type pubentry struct {
 	esymm *starwave.EncryptedSymmetricKey
 	symm  [32]byte
@@ -283,8 +285,23 @@ func (swc *SWClient) SetEntityOrExit(keyfile []byte) (vk string) {
 
 func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, error) {
 	// Only subscribe DoTs change
-	if !strings.Contains(p.AccessPermissions, "C") {
+	subscribe := strings.Contains(p.AccessPermissions, "C")
+	publish := strings.Contains(p.AccessPermissions, "P")
+	if publish && subscribe {
+		panic("STARWAVE does not support DoTs that simultaneously grant Publish (P) and Subscribe (C) permission")
+	} else if !publish && !subscribe {
 		return swc.BW2Client.CreateDOT(p)
+	}
+
+	var keyType int
+	if publish {
+		if SignMessages {
+			keyType = starwave.KeyTypeSignature
+		} else {
+			return swc.BW2Client.CreateDOT(p)
+		}
+	} else if subscribe {
+		keyType = starwave.KeyTypeDecryption
 	}
 
 	// Don't support ExpiryDelta
@@ -318,7 +335,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	} else {
 		keys = make([]*starwave.DecryptionKey, len(perms))
 		for i, perm := range perms {
-			key, err := swc.ObtainKey(namespace, perm)
+			key, err := swc.ObtainKey(namespace, perm, keyType)
 			if err == nil {
 				keys[i] = key
 			}
@@ -357,7 +374,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 
 	// Perform the delegation
-	db, err := starwave.DelegateBundle(rand.Reader, hd, swc.mysecret, filteredkeys, ed, uri, StartOfTime(), expiry)
+	db, err := starwave.DelegateBundle(rand.Reader, hd, swc.mysecret, filteredkeys, ed, uri, StartOfTime(), expiry, keyType)
 	if err != nil {
 		return "", nil, err
 	}
@@ -409,7 +426,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 
 /* Publishing messages. Need to make sure that POs are encrypted. */
 
-func (swc *SWClient) encryptPO(random io.Reader, hd *starwave.HierarchyDescriptor, perm *starwave.Permission, po bw2bind.PayloadObject) (bw2bind.PayloadObject, error) {
+func (swc *SWClient) encryptPO(random io.Reader, namespace string, hd *starwave.HierarchyDescriptor, perm *starwave.Permission, po bw2bind.PayloadObject) (bw2bind.PayloadObject, error) {
 	contents := po.GetContents()
 	buf := make([]byte, 4+len(contents))
 	binary.LittleEndian.PutUint32(buf[:4], uint32(po.GetPONum()))
@@ -419,12 +436,21 @@ func (swc *SWClient) encryptPO(random io.Reader, hd *starwave.HierarchyDescripto
 	var entry *pubentry
 	var hit bool
 	var err error
+	var sk *starwave.DecryptionKey
 	swc.pubmutex.RLock()
 	if entry, hit = swc.pubcache[cachekey]; swc.cachedisabled || !hit {
 		disabled := swc.cachedisabled
 		swc.pubmutex.RUnlock()
 		entry = new(pubentry)
-		entry.esymm, err = starwave.GenerateEncryptedSymmetricKey(random, hd, perm, entry.symm[:])
+		if SignMessages {
+			sk, err = swc.ObtainKey(namespace, perm, starwave.KeyTypeSignature)
+			if err != nil {
+				return nil, err
+			} else if sk == nil {
+				return nil, errors.New("Cannot obtain signing key for this URI")
+			}
+		}
+		entry.esymm, err = starwave.GenerateEncryptedSymmetricKey(random, hd, perm, sk, entry.symm[:])
 		if err != nil {
 			return nil, err
 		}
@@ -473,7 +499,7 @@ func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) 
 			return nil
 		}
 		entry = new(subentry)
-		d.DecryptSymmetricKey(esk, entry.symm[:])
+		d.DecryptSymmetricKey(esk, entry.symm[:], SignMessages)
 		if !disabled {
 			swc.submutex.Lock()
 			swc.subcache[cachekey] = entry
@@ -515,7 +541,7 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 	}
 
 	for i, po := range p.PayloadObjects {
-		p.PayloadObjects[i], err = swc.encryptPO(rand.Reader, hd, perm, po)
+		p.PayloadObjects[i], err = swc.encryptPO(rand.Reader, namespace, hd, perm, po)
 		if err != nil {
 			return err
 		}
@@ -527,18 +553,25 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 
 /* Building chains. When subscribing, we need to be able to obtain keys. */
 
-func (swc *SWClient) ObtainKey(namespace string, perm *starwave.Permission) (*starwave.DecryptionKey, error) {
+func (swc *SWClient) ObtainKey(namespace string, perm *starwave.Permission, keyType int) (*starwave.DecryptionKey, error) {
 	fullURI := strings.Join([]string{namespace, perm.URI.String()}, "/")
 
+	var bcType string
+	if keyType == starwave.KeyTypeDecryption {
+		bcType = "C"
+	} else if keyType == starwave.KeyTypeSignature {
+		bcType = "P"
+	}
+
 	var key *starwave.DecryptionKey
-	chains, err := swc.BW2Client.BuildChain(fullURI, "C", swc.myvk)
+	chains, err := swc.BW2Client.BuildChain(fullURI, bcType, swc.myvk)
 	for chain := range chains {
 		bundles, err := resolveChain(swc, chain, perm)
 		if bundles == nil || err != nil {
 			// Don't let one bad chain make the whole thing unusable
 			continue
 		}
-		key = starwave.DeriveKey(bundles, perm, swc.mysecret)
+		key = starwave.DeriveKey(bundles, perm, swc.mysecret, keyType)
 		if key != nil {
 			break
 		}
@@ -564,7 +597,7 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 					perm := emsg.Key.Permissions
 					if cachedperm == nil || !perm.Equals(cachedperm) {
 						// Need to get a decryptor
-						key, err := swc.ObtainKey(namespace, perm)
+						key, err := swc.ObtainKey(namespace, perm, starwave.KeyTypeDecryption)
 						if err != nil || key == nil {
 							fmt.Println("Could not obtain decryptor")
 							continue

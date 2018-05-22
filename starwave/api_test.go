@@ -76,7 +76,7 @@ func TestExplicitHybrid(t *testing.T) {
 	}
 
 	dsymm := make([]byte, 32)
-	retval := DecryptSymmetricKey(esymm, key, dsymm)
+	retval := DecryptSymmetricKey(esymm, key, dsymm, false)
 	if !bytes.Equal(dsymm, retval) {
 		t.Fatal("DecryptSymmetricKey does not return buffer correctly")
 	}

@@ -574,9 +574,9 @@ func DecryptWithSymmetricKey(c *EncryptedMessage, key *[32]byte) []byte {
 
 // DecryptSymmetricKey is like Decrypt, except that the input is only an
 // encrypted symmetric key instead of an encrypted message.
-func DecryptSymmetricKey(c *EncryptedSymmetricKey, key *DecryptionKey, symm []byte) []byte {
+func DecryptSymmetricKey(c *EncryptedSymmetricKey, key *DecryptionKey, symm []byte, checkSignature bool) []byte {
 	d := PrepareDecryption(c.Permissions, key)
-	return d.DecryptSymmetricKey(c, symm)
+	return d.DecryptSymmetricKey(c, symm, checkSignature)
 }
 
 // PrepareDecryption caches intermediate results for decrypting messages
@@ -616,7 +616,14 @@ func (d *Decryptor) Decrypt(c *EncryptedMessage, checkSignature bool) []byte {
 // DecryptSymmetricKey is the same as the general "DecryptSymmetricKey"
 // function, except that it uses cached results in the decryptor to speed up the
 // process.
-func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte) []byte {
+func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte, checkSignature bool) []byte {
+	ct := c.Ciphertext
+	if checkSignature {
+		ok := oaque.VerifyPrecomputed(d.Params, d.Verifier, c.Signature, cryptutils.HashToZp(ct.Marshal()))
+		if !ok {
+			return nil
+		}
+	}
 	return core.DecryptSymmetricKey(d.Key, c.Ciphertext, symm)
 }
 
