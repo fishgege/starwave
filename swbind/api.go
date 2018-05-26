@@ -20,7 +20,11 @@ import (
 	"github.com/ucbrise/starwave/starwave"
 )
 
-const SignMessages = true
+// Configuration of STARWAVE
+const (
+	SignMessages = true
+	SimpleRange  = false
+)
 
 type pubentry struct {
 	esymm *starwave.EncryptedSymmetricKey
@@ -320,6 +324,13 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 	p.ExpiryDelta = nil
 
+	if SimpleRange {
+		var err error
+		if expiry, err = time.Parse(time.RFC822Z, "31 Dec 18 23:59 +0000"); err != nil {
+			panic(err)
+		}
+	}
+
 	namespace, uri := extractNamespace(p.URI)
 	perms, err := starwave.PermissionRange(uri, StartOfTime(), expiry)
 	if err != nil {
@@ -499,7 +510,10 @@ func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) 
 			return nil
 		}
 		entry = new(subentry)
-		d.DecryptSymmetricKey(esk, entry.symm[:], SignMessages)
+		if d.DecryptSymmetricKey(esk, entry.symm[:], SignMessages) == nil {
+			return nil
+		}
+
 		if !disabled {
 			swc.submutex.Lock()
 			swc.subcache[cachekey] = entry
@@ -782,16 +796,24 @@ func (swc *SWClient) PublishDOTWithAcc(blob []byte, account int) (string, error)
 		entity := entities[4 : 4+entitylen]
 		entities = entities[4+entitylen:]
 
-		// Publish each entity at the end of the DOT
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		enti, err := objects.LoadRoutingObject(objects.ROEntity, entity)
+		if err != nil {
+			panic(err)
+		}
+		ent := enti.(*objects.Entity)
+		fmt.Println(ent.SigValid())
 
-			_, err := swc.BW2Client.PublishEntityWithAcc(entity, account)
-			if err != nil {
-				aerr.Store(err)
-			}
-		}()
+		// Publish each entity at the end of the DOT
+		//wg.Add(1)
+		//go func() {
+		//defer wg.Done()
+
+		_, err = swc.BW2Client.PublishEntityWithAcc(entity, account)
+		if err != nil {
+			fmt.Println(err)
+			aerr.Store(err)
+		}
+		//}()
 	}
 
 	// Finally, publish the actual DoT

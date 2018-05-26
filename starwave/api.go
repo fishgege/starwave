@@ -505,7 +505,7 @@ func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission, key *Decryptio
 		Precomputed: oaque.PrepareAttributeSet(hd.Params, attrs),
 	}
 	if key != nil {
-		if !keyTypeCompatible(key.KeyType, KeyTypeDecryption) {
+		if !keyTypeCompatible(key.KeyType, KeyTypeSignature) {
 			panic("Incorrect key type")
 		}
 		encryptor.SigningKey = oaque.NonDelegableKey(hd.Params, key.Key, signingAttrs)
@@ -532,7 +532,7 @@ func (e *Encryptor) Encrypt(random io.Reader, message []byte) (*EncryptedMessage
 	}
 
 	if e.SigningKey != nil {
-		em.Key.Signature, err = oaque.SignPrecomputed(nil, e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, cryptutils.HashToZp(message))
+		em.Key.Signature, err = oaque.SignPrecomputed(nil, e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, cryptutils.HashToZp(encryptedKey.Marshal()))
 		if err != nil {
 			return nil, err
 		}
@@ -549,10 +549,19 @@ func (e *Encryptor) GenerateEncryptedSymmetricKey(random io.Reader, symm []byte)
 	if err != nil {
 		return nil, err
 	}
-	return &EncryptedSymmetricKey{
+	esk := &EncryptedSymmetricKey{
 		Ciphertext:  ct,
 		Permissions: e.Permissions,
-	}, nil
+	}
+
+	if e.SigningKey != nil {
+		esk.Signature, err = oaque.SignPrecomputed(nil, e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, cryptutils.HashToZp(ct.Marshal()))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return esk, nil
 }
 
 // Decrypt converts an encrypted message into plaintext, as long as the provided
