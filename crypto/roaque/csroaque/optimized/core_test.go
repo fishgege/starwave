@@ -714,52 +714,52 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 // include slots for CS Method). The second parameter is the number of revoked leaves,
 // The third parameter is the number of users, and each user owns 65536/totUsers leaves.
 
-func BenchmarkEncryptForUsers_20_0_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 0, 256)
+func BenchmarkEncryptForUsers_20_0_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 0, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_5_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 5, 256)
+func BenchmarkEncryptForUsers_20_5_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 5, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_10_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 10, 256)
+func BenchmarkEncryptForUsers_20_10_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 10, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_20_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 20, 256)
+func BenchmarkEncryptForUsers_20_20_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 20, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_30_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 30, 256)
+func BenchmarkEncryptForUsers_20_30_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 30, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_40_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 40, 256)
+func BenchmarkEncryptForUsers_20_40_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 40, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_50_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 50, 256)
+func BenchmarkEncryptForUsers_20_50_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 50, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_60_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 60, 256)
+func BenchmarkEncryptForUsers_20_60_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 60, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_70_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 70, 256)
+func BenchmarkEncryptForUsers_20_70_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 70, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_80_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 80, 256)
+func BenchmarkEncryptForUsers_20_80_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 80, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_90_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 90, 256)
+func BenchmarkEncryptForUsers_20_90_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 90, 2048)
 }
 
-func BenchmarkEncryptForUsers_20_100_256(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 100, 256)
+func BenchmarkEncryptForUsers_20_100_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 100, 2048)
 }
 
 func BenchmarkEncryptForUsers_20_512_1024(b *testing.B) {
