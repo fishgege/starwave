@@ -687,6 +687,7 @@ func SignBenchmarkHelper(b *testing.B, numAttributes int) {
 			b.Fatal(err)
 		}
 
+		params.H = params.H[:len(id)]
 		key.B = key.B[:1]
 		b.StartTimer()
 		_, err = QualifyKey(rand.Reader, params, key, id)
@@ -737,11 +738,14 @@ func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
 			b.Fatal(err)
 		}
 
+		origH := params.H
+		params.H = params.H[:len(id)]
 		key.B = key.B[:1]
 		signature, err := QualifyKey(rand.Reader, params, key, id)
 		if err != nil {
 			b.Fatal(err)
 		}
+		params.H = origH
 
 		b.StartTimer()
 		params.Precache()
@@ -752,6 +756,7 @@ func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
 			c.Add(c, h)
 		}
 		rhs := bn256.Pair(c, signature.A1)
+		rhs = rhs.Add(rhs, params.Pairing)
 		if !bytes.Equal(lhs.Marshal(), rhs.Marshal()) {
 			b.Fatal("Signature verification failed")
 		}

@@ -176,7 +176,7 @@ func KeyGen(random io.Reader, params *Params, master MasterKey, id []*big.Int) (
 	return key, nil
 }
 
-// NonDelegableKeyGenFromMaster generates a key for an ID using the master key.
+// NonDelegableKeyFromMaster generates a key for an ID using the master key.
 // The resulting key is not re-randomized, and therefore is not suitable for
 // delegation to other entities.
 func NonDelegableKeyFromMaster(params *Params, master MasterKey, id []*big.Int) *PrivateKey {
