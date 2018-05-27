@@ -410,7 +410,8 @@ func KeyGenBenchmarkHelper(b *testing.B, numAttributes int) {
 
 		leaves := make([]AccessNode, numAttributes)
 		for i := 0; i != numAttributes; i++ {
-			attr, err := rand.Int(rand.Reader, bn256.Order)
+			var attr *big.Int
+			attr, err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -460,7 +461,8 @@ func QualifyKeyStartBenchmarkHelper(b *testing.B, numAttributes int) {
 
 		leaves := make([]AccessNode, numAttributes)
 		for i := 0; i != numAttributes; i++ {
-			attr, err := rand.Int(rand.Reader, bn256.Order)
+			var attr *big.Int
+			attr, err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -505,14 +507,15 @@ func QualifyKeyEndBenchmarkHelper(b *testing.B, numAttributes int) {
 
 	for i := 0; i < b.N; i++ {
 		// Set up parameters
-		params, master, err := Setup(rand.Reader, 20)
+		params, master, err := Setup(rand.Reader, 21)
 		if err != nil {
 			b.Fatal(err)
 		}
 
 		leaves := make([]AccessNode, numAttributes)
 		for i := 0; i != numAttributes; i++ {
-			attr, err := rand.Int(rand.Reader, bn256.Order)
+			var attr *big.Int
+			attr, err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -550,4 +553,130 @@ func BenchmarkQualifyKeyEnd_15(b *testing.B) {
 
 func BenchmarkQualifyKeyEnd_20(b *testing.B) {
 	QualifyKeyEndBenchmarkHelper(b, 20)
+}
+
+/*
+ * We don't implement signing in the API for LU KP-ABE, but we implement it in
+ * this microbenchmark.
+ */
+
+func SignBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 21)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		leaves := make([]AccessNode, numAttributes+1)
+		for i := 0; i != numAttributes+1; i++ {
+			var attr *big.Int
+			attr, err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+			leaves[i] = &AccessLeaf{Attr: attr}
+		}
+
+		tree := &AccessGate{
+			Thresh: numAttributes,
+			Inputs: leaves[:numAttributes],
+		}
+
+		key, err := KeyGen(rand.Reader, params, master, tree)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		AppendChildren(params, key, tree, leaves[numAttributes])
+		Rerandomize(rand.Reader, params, key)
+		b.StopTimer()
+	}
+}
+
+func BenchmarkSign_5(b *testing.B) {
+	SignBenchmarkHelper(b, 5)
+}
+
+func BenchmarkSign_10(b *testing.B) {
+	SignBenchmarkHelper(b, 10)
+}
+
+func BenchmarkSign_15(b *testing.B) {
+	SignBenchmarkHelper(b, 15)
+}
+
+func BenchmarkSign_20(b *testing.B) {
+	SignBenchmarkHelper(b, 20)
+}
+
+func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	g2gen := new(bn256.G2).ScalarBaseMult(big.NewInt(1))
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 21)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		leaves := make([]AccessNode, numAttributes+1)
+		attrs := make(AttributeSet, numAttributes+1)
+		for i := 0; i != numAttributes+1; i++ {
+			var attr *big.Int
+			attr, err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+			attrs[i] = attr
+			leaves[i] = &AccessLeaf{Attr: attr}
+		}
+
+		tree := &AccessGate{
+			Thresh: numAttributes,
+			Inputs: leaves[:numAttributes],
+		}
+
+		key, err := KeyGen(rand.Reader, params, master, tree)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		AppendChildren(params, key, tree, leaves[numAttributes])
+		Rerandomize(rand.Reader, params, key)
+
+		b.StartTimer()
+		params.Precache()
+		ciphertext := &Ciphertext{E1: params.Pairing, E2: g2gen}
+		ciphertext.Es = make([]*bn256.G1, len(attrs))
+		for index, i := range attrs {
+			ciphertext.Es[index] = params.T(i)
+		}
+		power := DecryptNodeURI(params, key, ciphertext, key.Tree)
+		if !bytes.Equal(params.Pairing.Marshal(), power.Marshal()) {
+			b.Fatal("Signature verification failed")
+		}
+		b.StopTimer()
+	}
+}
+
+func BenchmarkVerify_5(b *testing.B) {
+	VerifyBenchmarkHelper(b, 5)
+}
+
+func BenchmarkVerify_10(b *testing.B) {
+	VerifyBenchmarkHelper(b, 10)
+}
+
+func BenchmarkVerify_15(b *testing.B) {
+	VerifyBenchmarkHelper(b, 15)
+}
+
+func BenchmarkVerify_20(b *testing.B) {
+	VerifyBenchmarkHelper(b, 20)
 }

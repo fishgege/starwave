@@ -1,0 +1,50 @@
+goos: linux
+goarch: amd64
+pkg: github.com/ucbrise/starwave/crypto/oaque
+BenchmarkSetup-8                  	     500	  17165717 ns/op
+BenchmarkEncrypt_5-8              	    2000	   5420456 ns/op
+BenchmarkEncrypt_10-8             	    1000	   8876919 ns/op
+BenchmarkEncrypt_15-8             	     500	  12063345 ns/op
+BenchmarkEncrypt_20-8             	     500	  15352739 ns/op
+BenchmarkEncryptCached_5-8        	    3000	   1947890 ns/op
+BenchmarkEncryptCached_10-8       	    5000	   1968392 ns/op
+BenchmarkEncryptCached_15-8       	    5000	   2007599 ns/op
+BenchmarkEncryptCached_20-8       	    5000	   1943589 ns/op
+BenchmarkDecrypt_5-8              	    5000	   1821762 ns/op
+BenchmarkDecrypt_10-8             	    5000	   1821565 ns/op
+BenchmarkDecrypt_15-8             	    5000	   1841693 ns/op
+BenchmarkDecrypt_20-8             	    5000	   1818368 ns/op
+BenchmarkDecryptWithMaster_5-8    	   10000	    943686 ns/op
+BenchmarkDecryptWithMaster_10-8   	   10000	    942647 ns/op
+BenchmarkDecryptWithMaster_15-8   	   10000	    938479 ns/op
+BenchmarkDecryptWithMaster_20-8   	   10000	    939376 ns/op
+BenchmarkNonDelegableKey_5-8      	    2000	   3373208 ns/op
+BenchmarkNonDelegableKey_10-8     	    1000	   6722654 ns/op
+BenchmarkNonDelegableKey_15-8     	    1000	  10192313 ns/op
+BenchmarkNonDelegableKey_20-8     	     500	  13509438 ns/op
+BenchmarkSign_5-8                 	    2000	   5921884 ns/op
+BenchmarkSign_10-8                	    1000	   9306533 ns/op
+BenchmarkSign_15-8                	     500	  12535023 ns/op
+BenchmarkSign_20-8                	     500	  15833854 ns/op
+BenchmarkVerify_5-8               	    2000	   5853717 ns/op
+BenchmarkVerify_10-8              	    1000	   9259792 ns/op
+BenchmarkVerify_15-8              	     500	  12697510 ns/op
+BenchmarkVerify_20-8              	     500	  15867192 ns/op
+BenchmarkVerifyCached_5-8         	    3000	   2477037 ns/op
+BenchmarkVerifyCached_10-8        	    3000	   2480452 ns/op
+BenchmarkVerifyCached_15-8        	    3000	   2525627 ns/op
+BenchmarkVerifyCached_20-8        	    3000	   2480347 ns/op
+BenchmarkResampleKey_5-8          	    5000	   1723977 ns/op
+BenchmarkResampleKey_10-8         	    5000	   1805304 ns/op
+BenchmarkResampleKey_15-8         	    5000	   1759998 ns/op
+BenchmarkResampleKey_20-8         	    5000	   1758305 ns/op
+BenchmarkQualifyKeyStart_5-8      	     500	  15386902 ns/op
+BenchmarkQualifyKeyStart_10-8     	     500	  15057859 ns/op
+BenchmarkQualifyKeyStart_15-8     	     500	  15487575 ns/op
+BenchmarkQualifyKeyStart_20-8     	     500	  15211474 ns/op
+BenchmarkQualifyKeyEnd_5-8        	     500	  17732046 ns/op
+BenchmarkQualifyKeyEnd_10-8       	     300	  21032840 ns/op
+BenchmarkQualifyKeyEnd_15-8       	     300	  24245458 ns/op
+BenchmarkQualifyKeyEnd_20-8       	     300	  27936901 ns/op
+PASS
+ok  	github.com/ucbrise/starwave/crypto/oaque	3051.513s

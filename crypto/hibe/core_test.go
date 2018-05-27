@@ -663,3 +663,114 @@ func BenchmarkQualifyKeyEnd_15(b *testing.B) {
 func BenchmarkQualifyKeyEnd_20(b *testing.B) {
 	QualifyKeyEndBenchmarkHelper(b, 20)
 }
+
+func SignBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 21)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		id := make([]*big.Int, numAttributes+1)
+		for i := range id {
+			id[i], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(rand.Reader, params, master, id[:len(id)-1])
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		key.B = key.B[:1]
+		b.StartTimer()
+		_, err = QualifyKey(rand.Reader, params, key, id)
+		b.StopTimer()
+
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkSign_5(b *testing.B) {
+	SignBenchmarkHelper(b, 5)
+}
+
+func BenchmarkSign_10(b *testing.B) {
+	SignBenchmarkHelper(b, 10)
+}
+
+func BenchmarkSign_15(b *testing.B) {
+	SignBenchmarkHelper(b, 15)
+}
+
+func BenchmarkSign_20(b *testing.B) {
+	SignBenchmarkHelper(b, 20)
+}
+
+func VerifyBenchmarkHelper(b *testing.B, numAttributes int) {
+	b.StopTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Set up parameters
+		params, master, err := Setup(rand.Reader, 21)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		id := make([]*big.Int, numAttributes+1)
+		for i := range id {
+			id[i], err = rand.Int(rand.Reader, bn256.Order)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		key, err := KeyGen(rand.Reader, params, master, id[:len(id)-1])
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		key.B = key.B[:1]
+		signature, err := QualifyKey(rand.Reader, params, key, id)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		b.StartTimer()
+		params.Precache()
+		lhs := bn256.Pair(signature.A0, params.G)
+		c := new(bn256.G1).Set(params.G3)
+		for attrIndex, attr := range id {
+			h := new(bn256.G1).ScalarMult(params.H[attrIndex], attr)
+			c.Add(c, h)
+		}
+		rhs := bn256.Pair(c, signature.A1)
+		if !bytes.Equal(lhs.Marshal(), rhs.Marshal()) {
+			b.Fatal("Signature verification failed")
+		}
+		b.StopTimer()
+	}
+}
+
+func BenchmarkVerify_5(b *testing.B) {
+	VerifyBenchmarkHelper(b, 5)
+}
+
+func BenchmarkVerify_10(b *testing.B) {
+	VerifyBenchmarkHelper(b, 10)
+}
+
+func BenchmarkVerify_15(b *testing.B) {
+	VerifyBenchmarkHelper(b, 15)
+}
+
+func BenchmarkVerify_20(b *testing.B) {
+	VerifyBenchmarkHelper(b, 20)
+}

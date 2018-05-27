@@ -571,7 +571,7 @@ func AppendSubtree(params *Params, key *PrivateKey, node AccessNode) {
 	}
 }
 
-// AppendChild qualifies a private key by adding a new subtree as a child of
+// AppendChildren qualifies a private key by adding new subtrees as a child of
 // the specified node. The threshold of the gate increases too.
 //
 // Due to some computation optimizations, it is _necessary_ to call Rerandomize
