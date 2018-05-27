@@ -402,7 +402,7 @@ func EncryptBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, _, err := Setup(rand.Reader, 20)
+	params, _, err := Setup(rand.Reader, 21)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -451,7 +451,7 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 21)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func NonDelegableKeyBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 21)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -571,7 +571,7 @@ func QualifyKeyStartBenchmarkHelper(b *testing.B, numAttributes int) {
 
 	for i := 0; i < b.N; i++ {
 		// Set up parameters
-		params, master, err := Setup(rand.Reader, 20)
+		params, master, err := Setup(rand.Reader, 21)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -620,7 +620,7 @@ func QualifyKeyEndBenchmarkHelper(b *testing.B, numAttributes int) {
 
 	for i := 0; i < b.N; i++ {
 		// Set up parameters
-		params, master, err := Setup(rand.Reader, 20)
+		params, master, err := Setup(rand.Reader, 21)
 		if err != nil {
 			b.Fatal(err)
 		}

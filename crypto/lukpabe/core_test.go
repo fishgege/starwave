@@ -250,7 +250,7 @@ func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
 
 func BenchmarkSetup(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _, err := Setup(rand.Reader, 20)
+		_, _, err := Setup(rand.Reader, 21)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -261,7 +261,7 @@ func EncryptBenchmarkHelper(b *testing.B, numAttributes int) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, _, err := Setup(rand.Reader, 20)
+	params, _, err := Setup(rand.Reader, 21)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func DecryptBenchmarkHelper(b *testing.B, numAttributes int, fast bool) {
 	b.StopTimer()
 
 	// Set up parameters
-	params, master, err := Setup(rand.Reader, 20)
+	params, master, err := Setup(rand.Reader, 21)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func KeyGenBenchmarkHelper(b *testing.B, numAttributes int) {
 
 	for i := 0; i < b.N; i++ {
 		// Set up parameters
-		params, master, err := Setup(rand.Reader, 20)
+		params, master, err := Setup(rand.Reader, 21)
 		if err != nil {
 			b.Fatal(err)
 		}
