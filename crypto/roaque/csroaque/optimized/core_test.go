@@ -430,7 +430,7 @@ func BenchmarkEncryptForLeaves_5_50(b *testing.B) {
 	EncryptBenchmarkHelperForLeaves(b, 5, 50)
 }
 
-func BenchmarkEncrypForLeavest_10_50(b *testing.B) {
+func BenchmarkEncrypForLeaves_10_50(b *testing.B) {
 	EncryptBenchmarkHelperForLeaves(b, 10, 50)
 }
 
@@ -623,12 +623,12 @@ type interval struct {
 	rEnd int
 }
 
-const totUsers int = 200
-const keyLen int = maxLeaves / totUsers
+//const totUsers int = 200
 
-func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocations int) {
+func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocations int, totUsers int) {
 	b.StopTimer()
 
+	keyLen := maxLeaves / totUsers
 	// Set up parameters
 	params, _, err := Setup(rand.Reader, 20, maxLeaves)
 	if err != nil {
@@ -682,35 +682,45 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 	}
 }
 
-// Assume there are at most 2000 leaves, 200 users, and each user owns 10 leaves.
+// Assume there are at most 2000 leaves.
 // The first parameter is the number of slots for attributes (which does not
-// include slots for CS Method). The second parameter is the number of revoked leaves.
+// include slots for CS Method). The second parameter is the number of revoked leaves,
+// The third parameter is the number of users, and each user owns 2000/totUsers leaves.
 
-func BenchmarkEncryptForUsers_20_0(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 0)
+func BenchmarkEncryptForUsers_20_0_200(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 0, 200)
 }
 
-func BenchmarkEncryptForUsers_20_5(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 5)
+func BenchmarkEncryptForUsers_20_5_200(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 5, 200)
 }
 
-func BenchmarkEncryptForUsers_20_20(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 20)
+func BenchmarkEncryptForUsers_20_20_200(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 20, 200)
 }
 
-func BenchmarkEncryptForUsers_20_50(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 50)
+func BenchmarkEncryptForUsers_20_50_200(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 50, 200)
 }
 
-func BenchmarkEncryptForUsers_20_100(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 100)
+func BenchmarkEncryptForUsers_20_100_200(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 100, 200)
+}
+
+func BenchmarkEncryptForUsers_20_5_20(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 5, 20)
+}
+
+func BenchmarkEncryptForUsers_20_10_20(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 5, 20)
 }
 
 //==============================================================================
 
-func DecryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocations int) {
+func DecryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocations int, totUsers int) {
 	b.StopTimer()
 
+	keyLen := maxLeaves / totUsers
 	// Set up parameters
 	params, master, err := Setup(rand.Reader, 20, maxLeaves)
 	if err != nil {
@@ -782,21 +792,21 @@ func DecryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 // include slots for CS Method). The second parameter is the number of revoked leaves.
 
 func BenchmarkDecryptForUsers_a20_r0(b *testing.B) {
-	DecryptBenchmarkHelperForUsers(b, 20, 0)
+	//	DecryptBenchmarkHelperForUsers(b, 20, 0)
 }
 
 func BenchmarkDecryptForUsers_a20_r5(b *testing.B) {
-	DecryptBenchmarkHelperForUsers(b, 20, 5)
+	//	DecryptBenchmarkHelperForUsers(b, 20, 5)
 }
 
 func BenchmarkDecryptForUsers_a20_r20(b *testing.B) {
-	DecryptBenchmarkHelperForUsers(b, 20, 20)
+	//	DecryptBenchmarkHelperForUsers(b, 20, 20)
 }
 
 func BenchmarkDecryptForUsers_a20_r50(b *testing.B) {
-	DecryptBenchmarkHelperForUsers(b, 20, 50)
+	//	DecryptBenchmarkHelperForUsers(b, 20, 50)
 }
 
 func BenchmarkDecryptForUsers_a20_r100(b *testing.B) {
-	DecryptBenchmarkHelperForUsers(b, 20, 100)
+	//	DecryptBenchmarkHelperForUsers(b, 20, 100)
 }
