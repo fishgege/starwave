@@ -339,12 +339,36 @@ func BenchmarkQualifyKey_a20_l10(b *testing.B) {
 	QualifyKeyBenchmarkHelper(b, 20, 10)
 }
 
+func BenchmarkQualifyKey_a20_l20(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 20)
+}
+
 func BenchmarkQualifyKey_a20_l30(b *testing.B) {
 	QualifyKeyBenchmarkHelper(b, 20, 30)
 }
 
+func BenchmarkQualifyKey_a20_l40(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 40)
+}
+
 func BenchmarkQualifyKey_a20_l50(b *testing.B) {
 	QualifyKeyBenchmarkHelper(b, 20, 50)
+}
+
+func BenchmarkQualifyKey_a20_l60(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 60)
+}
+
+func BenchmarkQualifyKey_a20_l70(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 70)
+}
+
+func BenchmarkQualifyKey_a20_l80(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 80)
+}
+
+func BenchmarkQualifyKey_a20_l90(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 90)
 }
 
 func BenchmarkQualifyKey_a20_l100(b *testing.B) {
@@ -698,12 +722,40 @@ func BenchmarkEncryptForUsers_20_5_256(b *testing.B) {
 	EncryptBenchmarkHelperForUsers(b, 20, 5, 256)
 }
 
+func BenchmarkEncryptForUsers_20_10_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 10, 256)
+}
+
 func BenchmarkEncryptForUsers_20_20_256(b *testing.B) {
 	EncryptBenchmarkHelperForUsers(b, 20, 20, 256)
 }
 
+func BenchmarkEncryptForUsers_20_30_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 30, 256)
+}
+
+func BenchmarkEncryptForUsers_20_40_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 40, 256)
+}
+
 func BenchmarkEncryptForUsers_20_50_256(b *testing.B) {
 	EncryptBenchmarkHelperForUsers(b, 20, 50, 256)
+}
+
+func BenchmarkEncryptForUsers_20_60_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 60, 256)
+}
+
+func BenchmarkEncryptForUsers_20_70_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 70, 256)
+}
+
+func BenchmarkEncryptForUsers_20_80_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 80, 256)
+}
+
+func BenchmarkEncryptForUsers_20_90_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 90, 256)
 }
 
 func BenchmarkEncryptForUsers_20_100_256(b *testing.B) {
