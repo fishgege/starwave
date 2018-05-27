@@ -308,6 +308,9 @@ func HelperQuery(b *testing.B, msgsize int, encrypt bool) {
 	_, err = scl.SetEntityFile("subscribe.ent")
 	check(err)
 
+	// Make sure to do a decryption (and signature verification, if applicable)
+	scl.disablecache()
+
 	b.StartTimer()
 	if encrypt {
 		for i := 0; i < b.N; i++ {

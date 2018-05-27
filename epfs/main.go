@@ -63,7 +63,7 @@ func validatewrite(s *ipfs.Shell, fullpath string) (string, string) {
 func encryptfile(path string, myparams *oaque.Params, newfile io.Reader) io.Reader {
 	perm, err := starwave.ParsePermission(path, time.Now())
 	handle(err)
-	encryptedkey, encfile, err := core.HybridStreamEncrypt(rand.Reader, myparams, oaque.PrepareAttributeSet(myparams, perm.AttributeSet()), newfile)
+	encryptedkey, encfile, err := core.HybridStreamEncrypt(rand.Reader, myparams, oaque.PrepareAttributeSet(myparams, perm.AttributeSet(starwave.KeyTypeDecryption)), newfile)
 	handle(err)
 
 	newfile = io.MultiReader(starwave.MarshalIntoStream(perm), bytes.NewReader(encryptedkey.Marshal()), encfile)
@@ -81,7 +81,8 @@ func decryptfile(reader io.Reader, swc *swbind.SWClient, namespace string, myvk 
 		decryptionkey = swc.GetNamespaceDecryptionKey().Key
 		params = myhd.Params
 	} else {
-		namespacekey, err := swc.ObtainKey(namespace, perm)
+		var namespacekey *starwave.DecryptionKey
+		namespacekey, err = swc.ObtainKey(namespace, perm, starwave.KeyTypeDecryption)
 		handle(err)
 		if namespacekey == nil {
 			fmt.Fprintf(os.Stderr, "Could not obtain decryption key for %s and %s\n", perm.URI.String(), perm.Time.String())
@@ -94,7 +95,7 @@ func decryptfile(reader io.Reader, swc *swbind.SWClient, namespace string, myvk 
 		}
 	}
 
-	decryptionkey = oaque.NonDelegableKey(params, decryptionkey, perm.AttributeSet())
+	decryptionkey = oaque.NonDelegableKey(params, decryptionkey, perm.AttributeSet(starwave.KeyTypeDecryption))
 
 	decryptedreader, err := core.HybridStreamDecryptConcatenated(reader, decryptionkey)
 	handle(err)
