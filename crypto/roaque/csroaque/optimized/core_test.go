@@ -276,7 +276,7 @@ func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
 
 // The maximum number of leaves in the tree is 2000
 
-const maxLeaves int = 2000
+const maxLeaves int = 65536
 
 func BenchmarkSetup(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -349,6 +349,10 @@ func BenchmarkQualifyKey_a20_l50(b *testing.B) {
 
 func BenchmarkQualifyKey_a20_l100(b *testing.B) {
 	QualifyKeyBenchmarkHelper(b, 20, 100)
+}
+
+func BenchmarkQualifyKey_a20_l1000(b *testing.B) {
+	QualifyKeyBenchmarkHelper(b, 20, 1000)
 }
 
 //==============================================================================
@@ -563,10 +567,9 @@ func DecryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocat
 	}
 }
 
-// Assume there are at most 2000 leaves. The first parameter is the number of slots
+// Assume there are at most 65536 leaves. The first parameter is the number of slots
 // for attributes (which does not include slots for CS Method). The second parameter
-// is the number of revoked leaves. The third parameter is the number of leaves the decryption
-// key has.
+// is the number of revoked leaves. The third parameter is the number of leaves the user has.
 
 func BenchmarkDecryptForLeaves_a5_r0_n50(b *testing.B) {
 	DecryptBenchmarkHelperForLeaves(b, 5, 0, 50)
@@ -682,37 +685,33 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 	}
 }
 
-// Assume there are at most 2000 leaves.
+// Assume there are at most 65536 leaves.
 // The first parameter is the number of slots for attributes (which does not
 // include slots for CS Method). The second parameter is the number of revoked leaves,
-// The third parameter is the number of users, and each user owns 2000/totUsers leaves.
+// The third parameter is the number of users, and each user owns 65536/totUsers leaves.
 
-func BenchmarkEncryptForUsers_20_0_200(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 0, 200)
+func BenchmarkEncryptForUsers_20_0_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 0, 256)
 }
 
-func BenchmarkEncryptForUsers_20_5_200(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 5, 200)
+func BenchmarkEncryptForUsers_20_5_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 5, 256)
 }
 
-func BenchmarkEncryptForUsers_20_20_200(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 20, 200)
+func BenchmarkEncryptForUsers_20_20_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 20, 256)
 }
 
-func BenchmarkEncryptForUsers_20_50_200(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 50, 200)
+func BenchmarkEncryptForUsers_20_50_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 50, 256)
 }
 
-func BenchmarkEncryptForUsers_20_100_200(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 100, 200)
+func BenchmarkEncryptForUsers_20_100_256(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 100, 256)
 }
 
-func BenchmarkEncryptForUsers_20_5_20(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 5, 20)
-}
-
-func BenchmarkEncryptForUsers_20_10_20(b *testing.B) {
-	EncryptBenchmarkHelperForUsers(b, 20, 5, 20)
+func BenchmarkEncryptForUsers_20_512_1024(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 512, 1024)
 }
 
 //==============================================================================
