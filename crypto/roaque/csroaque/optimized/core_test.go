@@ -697,11 +697,16 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 			for j := perms[i].lEnd; j <= perms[i].rEnd; j++ {
 				revocs = append(revocs, j)
 			}
+			//println(perms[i].lEnd)
+			//println(perms[i].rEnd)
 		}
 
 		b.StartTimer()
-		_, err = Encrypt(params, attrs, revocs, message)
+		cipher, err := Encrypt(params, attrs, revocs, message)
 		b.StopTimer()
+
+		print("the number of ciphertext is: ")
+		println(len(cipher.cipherlist))
 
 		if err != nil {
 			b.Fatal(err)
@@ -716,6 +721,14 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 
 func BenchmarkEncryptForUsers_20_0_2048(b *testing.B) {
 	EncryptBenchmarkHelperForUsers(b, 20, 0, 2048)
+}
+
+func BenchmarkEncryptForUsers_20_1_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 1, 2048)
+}
+
+func BenchmarkEncryptForUsers_20_2_2048(b *testing.B) {
+	EncryptBenchmarkHelperForUsers(b, 20, 2, 2048)
 }
 
 func BenchmarkEncryptForUsers_20_5_2048(b *testing.B) {
