@@ -8,8 +8,22 @@ import (
 
 	"github.com/ucbrise/starwave/crypto/cryptutils"
 	"github.com/ucbrise/starwave/crypto/oaque"
+	roaque "github.com/ucbrise/starwave/crypto/roaque/csroaque/optimized"
 	"golang.org/x/crypto/nacl/secretbox"
 )
+
+//******************************************************************************
+
+func GenerateEncryptedSymmetricKeyRevoc(random io.Reader, params *roaque.Params, attrs oaque.AttributeList, revocList *roaque.RevocationList, symm []byte) (*roaque.Cipher, error) {
+	_, hashesToKey := cryptutils.GenerateKey(symm)
+	ct, err := roaque.Encrypt(params, attrs, *revocList, hashesToKey)
+	if err != nil {
+		return nil, err
+	}
+	return ct, nil
+}
+
+//******************************************************************************
 
 func GenerateEncryptedSymmetricKey(random io.Reader, params *oaque.Params, precomputed *oaque.PreparedAttributeList, symm []byte) (*oaque.Ciphertext, error) {
 	_, hashesToKey := cryptutils.GenerateKey(symm)
@@ -19,6 +33,18 @@ func GenerateEncryptedSymmetricKey(random io.Reader, params *oaque.Params, preco
 	}
 	return ct, nil
 }
+
+//******************************************************************************
+
+func DecryptSymmetricKeyRevoc(param *roaque.Params, key *roaque.PrivateKey, encryptedKey *roaque.Cipher, symm []byte) []byte {
+	hashesToKey := roaque.Decrypt(param, key, encryptedKey)
+	//println(hashesToKey)
+	//tmpc := encryptedKey.GetCipherlist()
+	//println(len(*tmpc))
+	return cryptutils.GTToSecretKey(hashesToKey, symm)
+}
+
+//******************************************************************************
 
 func DecryptSymmetricKey(key *oaque.PrivateKey, encryptedKey *oaque.Ciphertext, symm []byte) []byte {
 	hashesToKey := oaque.Decrypt(key, encryptedKey)
@@ -78,6 +104,27 @@ func (hsr *HybridStreamReader) Read(dst []byte) (n int, err error) {
 	return copied + n, err
 }
 
+//******************************************************************************
+
+func HybridStreamEncryptRevoc(random io.Reader, params *roaque.Params, attrs oaque.AttributeList, revocList *roaque.RevocationList, input io.Reader) (*roaque.Cipher, io.Reader, error) {
+	var key [32]byte
+	encryptedKey, err := GenerateEncryptedSymmetricKeyRevoc(random, params, attrs, revocList, key[:])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	blockcipher, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	streamcipher := cipher.NewCTR(blockcipher, make([]byte, aes.BlockSize))
+	symmencrypted := cipher.StreamReader{streamcipher, input}
+	return encryptedKey, symmencrypted, nil
+}
+
+//******************************************************************************
+
 func HybridStreamEncrypt(random io.Reader, params *oaque.Params, precomputed *oaque.PreparedAttributeList, input io.Reader) (*oaque.Ciphertext, io.Reader, error) {
 	var key [32]byte
 	encryptedKey, err := GenerateEncryptedSymmetricKey(random, params, precomputed, key[:])
@@ -95,6 +142,27 @@ func HybridStreamEncrypt(random io.Reader, params *oaque.Params, precomputed *oa
 	return encryptedKey, symmencrypted, nil
 }
 
+//******************************************************************************
+
+func HybridStreamDecryptRevoc(param *roaque.Params, encryptedKey *roaque.Cipher, encrypted io.Reader, key *roaque.PrivateKey) (io.Reader, error) {
+	var sk [32]byte
+
+	//tmpc := encryptedKey.GetCipherlist()
+
+	DecryptSymmetricKeyRevoc(param, key, encryptedKey, sk[:])
+
+	blockcipher, err := aes.NewCipher(sk[:])
+	if err != nil {
+		return nil, err
+	}
+
+	streamcipher := cipher.NewCTR(blockcipher, make([]byte, aes.BlockSize))
+	symmdecrypted := cipher.StreamReader{streamcipher, encrypted}
+	return symmdecrypted, nil
+}
+
+//******************************************************************************
+
 func HybridStreamDecrypt(encryptedKey *oaque.Ciphertext, encrypted io.Reader, key *oaque.PrivateKey) (io.Reader, error) {
 	var sk [32]byte
 	DecryptSymmetricKey(key, encryptedKey, sk[:])
@@ -108,6 +176,40 @@ func HybridStreamDecrypt(encryptedKey *oaque.Ciphertext, encrypted io.Reader, ke
 	symmdecrypted := cipher.StreamReader{streamcipher, encrypted}
 	return symmdecrypted, nil
 }
+
+//******************************************************************************
+
+func HybridStreamDecryptConcatenatedRevoc(encrypted io.Reader, param *roaque.Params, key *roaque.PrivateKey) (io.Reader, error) {
+	marshalled := make([]byte, 0)
+
+	//NOTE:io read can be improved.
+	buf := make([]byte, 1)
+	cnt := 0
+	for true {
+		n, err := io.ReadFull(encrypted, buf)
+		if n != 1 {
+			return nil, err
+		}
+
+		if buf[0] == '&' {
+			cnt++
+		}
+		marshalled = append(marshalled, buf[0])
+		if cnt == 2 {
+			break
+		}
+	}
+
+	encryptedKey := new(roaque.Cipher)
+	println(len(marshalled))
+	if !encryptedKey.UnMarshal(marshalled) {
+		return nil, errors.New("Could not unmarshal ciphertext")
+	}
+
+	return HybridStreamDecryptRevoc(param, encryptedKey, encrypted, key)
+}
+
+//******************************************************************************
 
 func HybridStreamDecryptConcatenated(encrypted io.Reader, key *oaque.PrivateKey) (io.Reader, error) {
 	var marshalled [oaque.CiphertextMarshalledSize]byte

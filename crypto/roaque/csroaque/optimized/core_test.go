@@ -90,6 +90,43 @@ func TestMultipleSparseAttributes(t *testing.T) {
 	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0), attrMaxSize - 1: big.NewInt(123)}, nil)
 }
 
+func TestMarshal(t *testing.T) {
+	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
+	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+
+	revoc1 := RevocationList{1, 2, 4}
+	revoc2 := RevocationList{1, 2, 3}
+
+	message := NewMessage()
+
+	ciphertext := encryptHelper(t, params, attrs2, revoc1, message)
+	ciphertext2 := encryptHelper(t, params, attrs2, revoc2, message)
+
+	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 4)
+	key2 := qualifyHelper(t, params, key1, attrs2, *key1.lEnd, *key1.lEnd+2)
+
+	m1 := ciphertext.Marshal()
+	m2 := ciphertext2.Marshal()
+
+	c1 := &Cipher{}
+	c2 := &Cipher{}
+
+	if err := c1.UnMarshal(m1); !err {
+		t.Fatal("UnMarshal for c1 failed")
+	}
+	if err := c2.UnMarshal(m2); !err {
+		t.Fatal("UnMarshal for c2 failed")
+	}
+
+	decryptAndCheckHelper(t, params, key2, ciphertext, message)
+	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
+}
+
 func TestQualifyKey(t *testing.T) {
 	// Set up parameters
 	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)

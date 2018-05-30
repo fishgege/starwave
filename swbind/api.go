@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/immesys/bw2/objects"
-	"github.com/immesys/bw2bind"
+	"github.com/samkumar/bw2bind"
 	"github.com/ucbrise/starwave/starwave"
 )
 

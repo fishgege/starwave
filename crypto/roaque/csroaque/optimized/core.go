@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"strconv"
 
 	"github.com/ucbrise/starwave/crypto/oaque"
 	"vuvuzela.io/crypto/bn256"
@@ -32,11 +33,27 @@ type PrivateKey struct {
 	lEnd, rEnd *int
 }
 
+func (p *PrivateKey) GetLEnd() int {
+	return *p.lEnd
+}
+
+func (p *PrivateKey) GetREnd() int {
+	return *p.rEnd
+}
+
 type RevocationList []int
 
 type Ciphertext struct {
 	ciphertext *oaque.Ciphertext
 	lEnd, rEnd *int
+}
+
+func (p *Ciphertext) GetLEnd() int {
+	return *p.lEnd
+}
+
+func (p *Ciphertext) GetREnd() int {
+	return *p.rEnd
 }
 
 type CiphertextList []*Ciphertext
@@ -45,6 +62,148 @@ type Cipher struct {
 	cipherlist CiphertextList
 	// TODO: attrs in cipher or in private key
 	attrs oaque.AttributeList
+}
+
+func (c *Cipher) GetCipherlist() *CiphertextList {
+	return &c.cipherlist
+}
+
+// geSize is the base size in bytes of a marshalled group element. The size of
+// a marshalled element of G2 is geSize. The size of a marshalled element of G1
+// is 2 * geSize. The size of a marshalled element of GT is 6 * geSize.
+const geSize = 64
+
+// geShift is the base shift for a marshalled group element
+const geShift = 6
+
+// attributeIndexSize is the size, in bytes, of an attribute index
+const attributeIndexSize = 1
+
+func geIndex(encoded []byte, index int, len int) []byte {
+	return encoded[index<<geShift : (index+len)<<geShift]
+}
+
+// CiphertextMarshalledSize is the size of a marshalled ciphertext, in bytes.
+const CiphertextMarshalledSize = 9 << geShift
+
+func (c *Cipher) Marshal() []byte {
+	marshalled := make([]byte, 0)
+
+	for _, att := range c.attrs {
+		tmp, err := att.MarshalText()
+		if err != nil {
+			panic("Marshal failed")
+		}
+		tmpString := string(tmp) + "$"
+
+		marshalled = append(marshalled, []byte(tmpString)...)
+	}
+
+	tmpString := "&"
+	marshalled = append(marshalled, []byte(tmpString)...)
+	println(len(marshalled))
+
+	for i := 0; i < len(c.cipherlist); i++ {
+		tmp := c.cipherlist[i].ciphertext.Marshal()
+		//copy(marshalled[tot:tot+l], tmp)
+		marshalled = append(marshalled, tmp...)
+
+		/*{
+			// Debug
+			cc := &Ciphertext{}
+			cc.ciphertext = &oaque.Ciphertext{}
+			println(tot - l)
+			println(tot)
+			ck := cc.ciphertext.Unmarshal(marshalled[tot-l : tot])
+			if !ck {
+				//println(string(marshalled[cnt : cnt+CiphertextMarshalledSize+5]))
+				panic("haha")
+			}
+		}*/
+
+		{
+			tmpL := *c.cipherlist[i].lEnd
+			tmpString := strconv.FormatUint(uint64(tmpL), 10) + "$"
+			//copy(marshalled[tot:tot+l], tmpString)
+			marshalled = append(marshalled, tmpString...)
+		}
+
+		{
+			tmpR := *c.cipherlist[i].rEnd
+			tmpString := strconv.FormatUint(uint64(tmpR), 10) + "$"
+			//copy(marshalled[tot:tot+l], tmpString)
+			marshalled = append(marshalled, tmpString...)
+		}
+	}
+
+	marshalled = append(marshalled, '&')
+
+	return marshalled
+}
+
+func (c *Cipher) UnMarshal(marshalled []byte) bool {
+	c.cipherlist = make(CiphertextList, 0)
+	cnt := 0
+
+	c.attrs = make(oaque.AttributeList)
+	for idx := 0; marshalled[cnt] != '&'; {
+		op := cnt
+		for marshalled[cnt] != '$' {
+			cnt++
+		}
+		tmp := big.NewInt(0)
+		tmp.UnmarshalText(marshalled[op:cnt])
+		c.attrs[oaque.AttributeIndex(idx)] = tmp
+		idx++
+		cnt++
+	}
+
+	cnt++
+	for cnt < len(marshalled) && marshalled[cnt] != '&' {
+		//		println("----")
+		//		println(cnt)
+		//		println(cnt + CiphertextMarshalledSize)
+		//		println(len(marshalled))
+		tmp := &Ciphertext{}
+		tmp.ciphertext = &oaque.Ciphertext{}
+		ck := tmp.ciphertext.Unmarshal(marshalled[cnt : cnt+CiphertextMarshalledSize])
+		if !ck {
+			//println(string(marshalled[cnt : cnt+CiphertextMarshalledSize+5]))
+			println("UnMarshal for ciphertext failed")
+			return false
+		}
+		cnt += CiphertextMarshalledSize
+
+		op := cnt
+		for marshalled[cnt] != '$' {
+			cnt++
+		}
+		p1, err := strconv.ParseUint(string(marshalled[op:cnt]), 10, 64)
+		if err != nil {
+			println("UnMarshal for lEnd failed")
+			return false
+		}
+		p2 := int(p1)
+		tmp.lEnd = &p2
+		cnt++
+
+		op = cnt
+		for marshalled[cnt] != '$' {
+			cnt++
+		}
+		p1, err = strconv.ParseUint(string(marshalled[op:cnt]), 10, 64)
+		if err != nil {
+			println("UnMarshal for rEnd failed")
+			return false
+		}
+		p2 = int(p1)
+		tmp.rEnd = &p2
+		cnt++
+
+		c.cipherlist = append(c.cipherlist, tmp)
+	}
+
+	return true
 }
 
 // Setup generates the system parameters, which may be made visible to an
