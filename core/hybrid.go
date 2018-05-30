@@ -179,28 +179,25 @@ func HybridStreamDecrypt(encryptedKey *oaque.Ciphertext, encrypted io.Reader, ke
 
 //******************************************************************************
 
-func HybridStreamDecryptConcatenatedRevoc(encrypted io.Reader, param *roaque.Params, key *roaque.PrivateKey) (io.Reader, error) {
+func HybridStreamDecryptConcatenatedRevoc(encrypted io.Reader, attrs oaque.AttributeList, param *roaque.Params, key *roaque.PrivateKey) (io.Reader, error) {
 	marshalled := make([]byte, 0)
 
 	//NOTE:io read can be improved.
 	buf := make([]byte, 1)
-	cnt := 0
 	for true {
 		n, err := io.ReadFull(encrypted, buf)
 		if n != 1 {
 			return nil, err
 		}
 
-		if buf[0] == '&' {
-			cnt++
-		}
 		marshalled = append(marshalled, buf[0])
-		if cnt == 2 {
+		if buf[0] == '&' {
 			break
 		}
 	}
 
-	encryptedKey := new(roaque.Cipher)
+	encryptedKey := &roaque.Cipher{}
+	encryptedKey.SetAttrs(&attrs)
 	println(len(marshalled))
 	if !encryptedKey.UnMarshal(marshalled) {
 		return nil, errors.New("Could not unmarshal ciphertext")

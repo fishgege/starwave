@@ -68,6 +68,10 @@ func (c *Cipher) GetCipherlist() *CiphertextList {
 	return &c.cipherlist
 }
 
+func (c *Cipher) SetAttrs(attrs *oaque.AttributeList) {
+	c.attrs = *attrs
+}
+
 // geSize is the base size in bytes of a marshalled group element. The size of
 // a marshalled element of G2 is geSize. The size of a marshalled element of G1
 // is 2 * geSize. The size of a marshalled element of GT is 6 * geSize.
@@ -89,7 +93,7 @@ const CiphertextMarshalledSize = 9 << geShift
 func (c *Cipher) Marshal() []byte {
 	marshalled := make([]byte, 0)
 
-	for _, att := range c.attrs {
+	/*for _, att := range c.attrs {
 		tmp, err := att.MarshalText()
 		if err != nil {
 			panic("Marshal failed")
@@ -97,11 +101,11 @@ func (c *Cipher) Marshal() []byte {
 		tmpString := string(tmp) + "$"
 
 		marshalled = append(marshalled, []byte(tmpString)...)
-	}
+	}*/
 
-	tmpString := "&"
-	marshalled = append(marshalled, []byte(tmpString)...)
-	println(len(marshalled))
+	//tmpString := "&"
+	//marshalled = append(marshalled, []byte(tmpString)...)
+	//println(len(marshalled))
 
 	for i := 0; i < len(c.cipherlist); i++ {
 		tmp := c.cipherlist[i].ciphertext.Marshal()
@@ -137,7 +141,8 @@ func (c *Cipher) Marshal() []byte {
 	}
 
 	marshalled = append(marshalled, '&')
-
+	println("haha")
+	println(len(marshalled))
 	return marshalled
 }
 
@@ -145,7 +150,7 @@ func (c *Cipher) UnMarshal(marshalled []byte) bool {
 	c.cipherlist = make(CiphertextList, 0)
 	cnt := 0
 
-	c.attrs = make(oaque.AttributeList)
+	/*c.attrs = make(oaque.AttributeList)
 	for idx := 0; marshalled[cnt] != '&'; {
 		op := cnt
 		for marshalled[cnt] != '$' {
@@ -157,8 +162,8 @@ func (c *Cipher) UnMarshal(marshalled []byte) bool {
 		idx++
 		cnt++
 	}
+	cnt++*/
 
-	cnt++
 	for cnt < len(marshalled) && marshalled[cnt] != '&' {
 		//		println("----")
 		//		println(cnt)

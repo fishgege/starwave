@@ -113,8 +113,8 @@ func TestMarshal(t *testing.T) {
 	m1 := ciphertext.Marshal()
 	m2 := ciphertext2.Marshal()
 
-	c1 := &Cipher{}
-	c2 := &Cipher{}
+	c1 := &Cipher{attrs: attrs2}
+	c2 := &Cipher{attrs: attrs2}
 
 	if err := c1.UnMarshal(m1); !err {
 		t.Fatal("UnMarshal for c1 failed")
@@ -123,8 +123,8 @@ func TestMarshal(t *testing.T) {
 		t.Fatal("UnMarshal for c2 failed")
 	}
 
-	decryptAndCheckHelper(t, params, key2, ciphertext, message)
-	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
+	decryptAndCheckHelper(t, params, key2, c1, message)
+	decryptAndCheckHelper2(t, params, key2, c2, message)
 }
 
 func TestQualifyKey(t *testing.T) {

@@ -76,7 +76,8 @@ func decryptfile(reader io.Reader, myparams *roaque.Params, mydk *roaque.Private
 	err := starwave.UnmarshalFromStream(perm, reader)
 	handle(err)
 
-	decryptedreader, err := core.HybridStreamDecryptConcatenatedRevoc(reader, myparams, mydk)
+	attrs := perm.AttributeSet(starwave.KeyTypeDecryption)
+	decryptedreader, err := core.HybridStreamDecryptConcatenatedRevoc(reader, attrs, myparams, mydk)
 	handle(err)
 
 	return decryptedreader
