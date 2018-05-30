@@ -103,7 +103,7 @@ func HelperAddFile(b *testing.B, filesize int, encrypt bool, tofs bool, setnewro
 	}
 }
 
-const numRevoc = 0
+const numRevoc = 5
 const numUser = 2048
 
 func BenchmarkAddFileNoEncrypt1KiB(b *testing.B) {

@@ -90,122 +90,89 @@ func geIndex(encoded []byte, index int, len int) []byte {
 // CiphertextMarshalledSize is the size of a marshalled ciphertext, in bytes.
 const CiphertextMarshalledSize = 9 << geShift
 
+// 16^5
+const LeaveRangeMarshalledSize = 5
+
+// 16^5
+const TotLenMarshalledSize = 5
+
+func PadString(tmp string, max int) string {
+	l := len(tmp)
+	for i := l; i < max; i++ {
+		tmp = "0" + tmp
+	}
+	return tmp
+}
+
 func (c *Cipher) Marshal() []byte {
 	marshalled := make([]byte, 0)
-
-	/*for _, att := range c.attrs {
-		tmp, err := att.MarshalText()
-		if err != nil {
-			panic("Marshal failed")
-		}
-		tmpString := string(tmp) + "$"
-
-		marshalled = append(marshalled, []byte(tmpString)...)
-	}*/
-
-	//tmpString := "&"
-	//marshalled = append(marshalled, []byte(tmpString)...)
-	//println(len(marshalled))
 
 	for i := 0; i < len(c.cipherlist); i++ {
 		tmp := c.cipherlist[i].ciphertext.Marshal()
 		//copy(marshalled[tot:tot+l], tmp)
 		marshalled = append(marshalled, tmp...)
 
-		/*{
-			// Debug
-			cc := &Ciphertext{}
-			cc.ciphertext = &oaque.Ciphertext{}
-			println(tot - l)
-			println(tot)
-			ck := cc.ciphertext.Unmarshal(marshalled[tot-l : tot])
-			if !ck {
-				//println(string(marshalled[cnt : cnt+CiphertextMarshalledSize+5]))
-				panic("haha")
-			}
-		}*/
-
 		{
 			tmpL := *c.cipherlist[i].lEnd
-			tmpString := strconv.FormatUint(uint64(tmpL), 10) + "$"
-			//copy(marshalled[tot:tot+l], tmpString)
+			tmpString := strconv.FormatUint(uint64(tmpL), 16)
+			tmpString = PadString(tmpString, LeaveRangeMarshalledSize)
 			marshalled = append(marshalled, tmpString...)
 		}
 
 		{
 			tmpR := *c.cipherlist[i].rEnd
-			tmpString := strconv.FormatUint(uint64(tmpR), 10) + "$"
-			//copy(marshalled[tot:tot+l], tmpString)
+			tmpString := strconv.FormatUint(uint64(tmpR), 16)
+			tmpString = PadString(tmpString, LeaveRangeMarshalledSize)
 			marshalled = append(marshalled, tmpString...)
 		}
 	}
 
-	marshalled = append(marshalled, '&')
-	println("haha")
-	println(len(marshalled))
+	tmpString := strconv.FormatUint(uint64(len(c.cipherlist)), 16)
+	tmpString = PadString(tmpString, TotLenMarshalledSize)
+	marshalled = append([]byte(tmpString), marshalled...)
 	return marshalled
 }
 
 func (c *Cipher) UnMarshal(marshalled []byte) bool {
-	c.cipherlist = make(CiphertextList, 0)
-	cnt := 0
-
-	/*c.attrs = make(oaque.AttributeList)
-	for idx := 0; marshalled[cnt] != '&'; {
-		op := cnt
-		for marshalled[cnt] != '$' {
-			cnt++
-		}
-		tmp := big.NewInt(0)
-		tmp.UnmarshalText(marshalled[op:cnt])
-		c.attrs[oaque.AttributeIndex(idx)] = tmp
-		idx++
-		cnt++
+	idx := 0
+	totlen, err := strconv.ParseUint(string(marshalled[0:TotLenMarshalledSize]), 16, 64)
+	if err != nil {
+		return false
 	}
-	cnt++*/
+	idx = TotLenMarshalledSize
 
-	for cnt < len(marshalled) && marshalled[cnt] != '&' {
-		//		println("----")
-		//		println(cnt)
-		//		println(cnt + CiphertextMarshalledSize)
-		//		println(len(marshalled))
+	c.cipherlist = make(CiphertextList, totlen)
+
+	for i := 0; i < int(totlen); i++ {
 		tmp := &Ciphertext{}
 		tmp.ciphertext = &oaque.Ciphertext{}
-		ck := tmp.ciphertext.Unmarshal(marshalled[cnt : cnt+CiphertextMarshalledSize])
-		if !ck {
-			//println(string(marshalled[cnt : cnt+CiphertextMarshalledSize+5]))
-			println("UnMarshal for ciphertext failed")
+		err := tmp.ciphertext.Unmarshal(marshalled[idx : idx+CiphertextMarshalledSize])
+		if !err {
 			return false
 		}
-		cnt += CiphertextMarshalledSize
+		idx = idx + CiphertextMarshalledSize
 
-		op := cnt
-		for marshalled[cnt] != '$' {
-			cnt++
+		{
+			t, err := strconv.ParseUint(string(marshalled[idx:idx+LeaveRangeMarshalledSize]), 16, 64)
+			if err != nil {
+				return false
+			}
+			tmp.lEnd = new(int)
+			*tmp.lEnd = int(t)
+			idx = idx + LeaveRangeMarshalledSize
 		}
-		p1, err := strconv.ParseUint(string(marshalled[op:cnt]), 10, 64)
-		if err != nil {
-			println("UnMarshal for lEnd failed")
-			return false
-		}
-		p2 := int(p1)
-		tmp.lEnd = &p2
-		cnt++
 
-		op = cnt
-		for marshalled[cnt] != '$' {
-			cnt++
+		{
+			t, err := strconv.ParseUint(string(marshalled[idx:idx+LeaveRangeMarshalledSize]), 16, 64)
+			if err != nil {
+				return false
+			}
+			tmp.rEnd = new(int)
+			*tmp.rEnd = int(t)
+			idx = idx + LeaveRangeMarshalledSize
 		}
-		p1, err = strconv.ParseUint(string(marshalled[op:cnt]), 10, 64)
-		if err != nil {
-			println("UnMarshal for rEnd failed")
-			return false
-		}
-		p2 = int(p1)
-		tmp.rEnd = &p2
-		cnt++
 
-		c.cipherlist = append(c.cipherlist, tmp)
+		c.cipherlist[i] = tmp
 	}
 
 	return true

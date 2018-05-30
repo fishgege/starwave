@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"errors"
 	"io"
+	"strconv"
 
 	"github.com/ucbrise/starwave/crypto/cryptutils"
 	"github.com/ucbrise/starwave/crypto/oaque"
@@ -180,26 +181,27 @@ func HybridStreamDecrypt(encryptedKey *oaque.Ciphertext, encrypted io.Reader, ke
 //******************************************************************************
 
 func HybridStreamDecryptConcatenatedRevoc(encrypted io.Reader, attrs oaque.AttributeList, param *roaque.Params, key *roaque.PrivateKey) (io.Reader, error) {
-	marshalled := make([]byte, 0)
+	buf := make([]byte, roaque.TotLenMarshalledSize)
+	n, err := io.ReadFull(encrypted, buf[:])
+	if n != len(buf) {
+		return nil, err
+	}
 
-	//NOTE:io read can be improved.
-	buf := make([]byte, 1)
-	for true {
-		n, err := io.ReadFull(encrypted, buf)
-		if n != 1 {
-			return nil, err
-		}
+	totlen, err := strconv.ParseUint(string(buf[0:roaque.TotLenMarshalledSize]), 16, 64)
+	if err != nil {
+		return nil, err
+	}
 
-		marshalled = append(marshalled, buf[0])
-		if buf[0] == '&' {
-			break
-		}
+	marshalled := make([]byte, totlen*(roaque.CiphertextMarshalledSize+2*roaque.LeaveRangeMarshalledSize))
+	n, err = io.ReadFull(encrypted, marshalled[:])
+	if n != len(marshalled) {
+		return nil, err
 	}
 
 	encryptedKey := &roaque.Cipher{}
 	encryptedKey.SetAttrs(&attrs)
-	println(len(marshalled))
-	if !encryptedKey.UnMarshal(marshalled) {
+	//println(len(marshalled))
+	if !encryptedKey.UnMarshal(append(buf, marshalled...)) {
 		return nil, errors.New("Could not unmarshal ciphertext")
 	}
 
