@@ -3,6 +3,7 @@ package blkchainrpc
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -96,8 +97,13 @@ func (cli *Zcash_cli) SendMarshalledData(marshalled []byte) error {
 	println(len(marshalled))
 	for idx < len(marshalled) {
 		msg := string(marshalled[idx:min(len(marshalled), idx+msgLen)])
-		prev_id, err = cli.SendMemo(strings.TrimSpace(prev_id) + strings.TrimSpace(msg))
-		println(len(prev_id) == len(emptytxid))
+		tmp := strings.TrimSpace(prev_id) + strings.TrimSpace(msg)
+		for len(tmp) < MemoLen {
+			tmp = tmp + "0"
+		}
+
+		prev_id, err = cli.SendMemo(tmp)
+
 		if err != nil {
 			return err
 		}
@@ -120,6 +126,7 @@ type MapEntry struct {
 }
 
 func (cli *Zcash_cli) GenerateRevocList() (*RevocationList, error) {
+	println("Start Generate RevocationList")
 	out, err := ListReceivedByVAddr(cli)
 	if err != nil {
 		return nil, err
@@ -131,6 +138,8 @@ func (cli *Zcash_cli) GenerateRevocList() (*RevocationList, error) {
 		return nil, err
 	}
 
+	fmt.Printf("The number of Txs: %d\n", len(txs))
+
 	txMap := make(map[string]*MapEntry)
 	for i := 0; i < len(txs); i++ {
 		tmp := &MapEntry{next: nil, memo: txs[i].Memo[len(emptytxid):]}
@@ -139,7 +148,10 @@ func (cli *Zcash_cli) GenerateRevocList() (*RevocationList, error) {
 	}
 
 	for _, entry := range txMap {
-		txMap[entry.prev_id].next = entry
+		if entry.prev_id != emptytxid {
+			//println(entry.prev_id)
+			txMap[entry.prev_id].next = entry
+		}
 	}
 
 	revoc := make(RevocationList, 0)
