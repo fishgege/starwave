@@ -4,7 +4,6 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"strconv"
 
 	"github.com/ucbrise/starwave/crypto/oaque"
 	"vuvuzela.io/crypto/bn256"
@@ -70,112 +69,6 @@ func (c *Cipher) GetCipherlist() *CiphertextList {
 
 func (c *Cipher) SetAttrs(attrs *oaque.AttributeList) {
 	c.attrs = *attrs
-}
-
-// geSize is the base size in bytes of a marshalled group element. The size of
-// a marshalled element of G2 is geSize. The size of a marshalled element of G1
-// is 2 * geSize. The size of a marshalled element of GT is 6 * geSize.
-const geSize = 64
-
-// geShift is the base shift for a marshalled group element
-const geShift = 6
-
-// attributeIndexSize is the size, in bytes, of an attribute index
-const attributeIndexSize = 1
-
-func geIndex(encoded []byte, index int, len int) []byte {
-	return encoded[index<<geShift : (index+len)<<geShift]
-}
-
-// CiphertextMarshalledSize is the size of a marshalled ciphertext, in bytes.
-const CiphertextMarshalledSize = 9 << geShift
-
-// 16^5
-const LeaveRangeMarshalledSize = 5
-
-// 16^5
-const TotLenMarshalledSize = 5
-
-func PadString(tmp string, max int) string {
-	l := len(tmp)
-	for i := l; i < max; i++ {
-		tmp = "0" + tmp
-	}
-	return tmp
-}
-
-func (c *Cipher) Marshal() []byte {
-	marshalled := make([]byte, 0)
-
-	for i := 0; i < len(c.cipherlist); i++ {
-		tmp := c.cipherlist[i].ciphertext.Marshal()
-		//copy(marshalled[tot:tot+l], tmp)
-		marshalled = append(marshalled, tmp...)
-
-		{
-			tmpL := *c.cipherlist[i].lEnd
-			tmpString := strconv.FormatUint(uint64(tmpL), 16)
-			tmpString = PadString(tmpString, LeaveRangeMarshalledSize)
-			marshalled = append(marshalled, tmpString...)
-		}
-
-		{
-			tmpR := *c.cipherlist[i].rEnd
-			tmpString := strconv.FormatUint(uint64(tmpR), 16)
-			tmpString = PadString(tmpString, LeaveRangeMarshalledSize)
-			marshalled = append(marshalled, tmpString...)
-		}
-	}
-
-	tmpString := strconv.FormatUint(uint64(len(c.cipherlist)), 16)
-	tmpString = PadString(tmpString, TotLenMarshalledSize)
-	marshalled = append([]byte(tmpString), marshalled...)
-	return marshalled
-}
-
-func (c *Cipher) UnMarshal(marshalled []byte) bool {
-	idx := 0
-	totlen, err := strconv.ParseUint(string(marshalled[0:TotLenMarshalledSize]), 16, 64)
-	if err != nil {
-		return false
-	}
-	idx = TotLenMarshalledSize
-
-	c.cipherlist = make(CiphertextList, totlen)
-
-	for i := 0; i < int(totlen); i++ {
-		tmp := &Ciphertext{}
-		tmp.ciphertext = &oaque.Ciphertext{}
-		err := tmp.ciphertext.Unmarshal(marshalled[idx : idx+CiphertextMarshalledSize])
-		if !err {
-			return false
-		}
-		idx = idx + CiphertextMarshalledSize
-
-		{
-			t, err := strconv.ParseUint(string(marshalled[idx:idx+LeaveRangeMarshalledSize]), 16, 64)
-			if err != nil {
-				return false
-			}
-			tmp.lEnd = new(int)
-			*tmp.lEnd = int(t)
-			idx = idx + LeaveRangeMarshalledSize
-		}
-
-		{
-			t, err := strconv.ParseUint(string(marshalled[idx:idx+LeaveRangeMarshalledSize]), 16, 64)
-			if err != nil {
-				return false
-			}
-			tmp.rEnd = new(int)
-			*tmp.rEnd = int(t)
-			idx = idx + LeaveRangeMarshalledSize
-		}
-
-		c.cipherlist[i] = tmp
-	}
-
-	return true
 }
 
 // Setup generates the system parameters, which may be made visible to an
