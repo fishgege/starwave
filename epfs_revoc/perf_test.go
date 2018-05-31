@@ -215,7 +215,7 @@ func HelperReadFile(b *testing.B, filesize int, encrypt bool, tofs bool, numRevo
 			}
 		}
 
-		mydk, err = roaque.KeyGen(myparams, mymk, attrs, perms[numRevocations].lEnd, keyLen)
+		mydk, err = roaque.KeyGen(myparams, mymk, attrs, perms[numRevocations].lEnd-1, keyLen)
 		if err != nil {
 			b.Fatal(err)
 		}

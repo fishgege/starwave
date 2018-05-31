@@ -1,6 +1,7 @@
 package csroaque_opt
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -30,6 +31,31 @@ type privateKeyNode struct {
 type PrivateKey struct {
 	root       *privateKeyNode
 	lEnd, rEnd *int
+}
+
+func treeCountNodes(pNode *privateKeyNode) (int, int) {
+	if pNode == nil {
+		return 0, 0
+	}
+	cnt_nd, cnt_d := 0, 0
+	if *pNode.delegable {
+		cnt_d++
+	} else {
+		cnt_nd++
+	}
+
+	tmp_nd, tmp_d := treeCountNodes(pNode.left)
+	cnt_nd, cnt_d = cnt_nd+tmp_nd, cnt_d+tmp_d
+
+	tmp_nd, tmp_d = treeCountNodes(pNode.right)
+	cnt_nd, cnt_d = cnt_nd+tmp_nd, cnt_d+tmp_d
+	return cnt_nd, cnt_d
+}
+
+func (p *PrivateKey) CountNodes() {
+	cnt_nd, cnt_d := treeCountNodes(p.root)
+	fmt.Printf("The number of non-delegable keys is %d\n", cnt_nd)
+	fmt.Printf("The number of delegable keys is %d\n", cnt_d)
 }
 
 func (p *PrivateKey) GetLEnd() int {

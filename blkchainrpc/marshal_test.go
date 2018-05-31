@@ -82,6 +82,8 @@ func TestRevocationList(t *testing.T) {
 		perms := make([]*interval, totUsers)
 		for i, j := 0, 0; i != totUsers; i++ {
 			tmp := &interval{lEnd: j + 1, rEnd: j + keyLen}
+			//		println(tmp.lEnd)
+			//		println(tmp.rEnd)
 			perms[i] = tmp
 			j = j + keyLen
 		}
@@ -100,12 +102,14 @@ func TestRevocationList(t *testing.T) {
 			}
 		}
 
-		mydk, err = roaque.KeyGen(myparams, mymk, attrs, perms[numRevocations].lEnd, keyLen)
+		mydk, err = roaque.KeyGen(myparams, mymk, attrs, perms[numRevocations].lEnd-1, keyLen)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-
+	mydk.CountNodes()
+	println(mydk.GetLEnd())
+	println(mydk.GetREnd())
 	//Step3: Start testing
 	tmpAttr := oaque.AttributeList(attrs)
 	marshalled, err := mydk.Marshal(myparams, &tmpAttr)

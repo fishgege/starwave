@@ -93,6 +93,7 @@ func (cli *Zcash_cli) SendMarshalledData(marshalled []byte) error {
 	idx := 0
 	prev_id := emptytxid
 	var err error
+	println(len(marshalled))
 	for idx < len(marshalled) {
 		msg := string(marshalled[idx:min(len(marshalled), idx+msgLen)])
 		prev_id, err = cli.SendMemo(strings.TrimSpace(prev_id) + strings.TrimSpace(msg))
