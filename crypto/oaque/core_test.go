@@ -30,6 +30,14 @@ func encryptHelper(t *testing.T, params *Params, attrs AttributeList, message *b
 	return ciphertext
 }
 
+func encryptPreparedHelper(t *testing.T, params *Params, precomputed *PreparedAttributeList, message *bn256.GT) *Ciphertext {
+	ciphertext, err := EncryptPrecomputed(nil, params, precomputed, message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ciphertext
+}
+
 func verifyHelper(t *testing.T, params *Params, attrs AttributeList, signature *Signature, message *big.Int) {
 	correct := Verify(params, attrs, signature, message)
 	if !correct {
@@ -153,6 +161,54 @@ func TestQualifyKey(t *testing.T) {
 	key2 := qualifyHelper(t, params, key1, attrs2)
 
 	decryptAndCheckHelper(t, key2, ciphertext, message)
+}
+
+func TestAdjustPrepared1(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := AttributeList{2: big.NewInt(4), 5: big.NewInt(8)}
+	attrs2 := AttributeList{3: big.NewInt(4), 5: big.NewInt(8), 7: big.NewInt(123)}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	prepared1 := PrepareAttributeSet(params, attrs1)
+	prepared2 := AdjustPreparedAttributeSet(params, attrs1, attrs2, prepared1)
+	ciphertext := encryptPreparedHelper(t, params, prepared2, message)
+
+	// Generate key in two steps
+	key := genFromMasterHelper(t, params, masterkey, attrs2)
+
+	decryptAndCheckHelper(t, key, ciphertext, message)
+}
+
+func TestAdjustPrepared2(t *testing.T) {
+	// Set up parameters
+	params, masterkey, err := Setup(rand.Reader, 10, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	attrs1 := AttributeList{2: big.NewInt(4), 5: big.NewInt(8)}
+	attrs2 := AttributeList{3: big.NewInt(4), 5: big.NewInt(9), 7: big.NewInt(123)}
+
+	// Come up with a message to encrypt
+	message := NewMessage()
+
+	// Encrypt a message under the top level public key
+	prepared2 := PrepareAttributeSet(params, attrs2)
+	prepared1 := AdjustPreparedAttributeSet(params, attrs2, attrs1, prepared2)
+	ciphertext := encryptPreparedHelper(t, params, prepared1, message)
+
+	// Generate key in two steps
+	key := genFromMasterHelper(t, params, masterkey, attrs1)
+
+	decryptAndCheckHelper(t, key, ciphertext, message)
 }
 
 func TestNonDelegableKey(t *testing.T) {
