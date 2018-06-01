@@ -7,8 +7,10 @@ import (
 	"io"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/immesys/bw2bind"
+	"github.com/ucbrise/starwave/starwave"
 	"github.com/ucbrise/starwave/swbind"
 
 	ipfs "github.com/ipfs/go-ipfs-api"
@@ -168,7 +170,10 @@ func HelperReadFile(b *testing.B, filesize int, encrypt bool, tofs bool) {
 	myvk, err := swc.SetEntityFile("../swbind/subscribe.ent")
 	check(err)
 	myhd = swbind.HierarchyDescriptorFromEntity(swc.GetEntity())
-	myparams = myhd.Params
+
+	perm, err := starwave.ParsePermission(path, time.Now())
+	check(err)
+	dparams, dkey := obtainkey(perm, swc, nsvk, myvk, myhd, false)
 
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
@@ -193,7 +198,11 @@ func HelperReadFile(b *testing.B, filesize int, encrypt bool, tofs bool) {
 
 		var toread io.Reader = reader
 		if encrypt {
-			toread = decryptfile(reader, swc, namespace, myvk, myhd, false)
+			if tofs {
+				toread = decryptfile(reader, swc, namespace, myvk, myhd, false)
+			} else {
+				toread = decryptfilewithkey(reader, dparams, dkey)
+			}
 		}
 
 		_, err = ioutil.ReadAll(toread)

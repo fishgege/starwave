@@ -70,6 +70,45 @@ func encryptfile(path string, myparams *oaque.Params, newfile io.Reader) io.Read
 	return newfile
 }
 
+func obtainkey(perm *starwave.Permission, swc *swbind.SWClient, namespace string, myvk string, myhd *starwave.HierarchyDescriptor, verbose bool) (*oaque.Params, *oaque.PrivateKey) {
+	var decryptionkey *oaque.PrivateKey
+	var params *oaque.Params
+	var err error
+	if namespace == myvk {
+		decryptionkey = swc.GetNamespaceDecryptionKey().Key
+		params = myhd.Params
+	} else {
+		var namespacekey *starwave.DecryptionKey
+		namespacekey, err = swc.ObtainKey(namespace, perm, starwave.KeyTypeDecryption)
+		handle(err)
+		if namespacekey == nil {
+			fmt.Fprintf(os.Stderr, "Could not obtain decryption key for %s and %s\n", perm.URI.String(), perm.Time.String())
+			os.Exit(8)
+		}
+		decryptionkey = namespacekey.Key
+		params = namespacekey.Hierarchy.Params
+		if verbose {
+			fmt.Fprintf(os.Stderr, "Obtained decryption key for %s and %s\n", namespacekey.Permissions.URI.String(), namespacekey.Permissions.Time.String())
+		}
+	}
+
+	return params, decryptionkey
+}
+
+// In case the application has the key cached
+func decryptfilewithkey(reader io.Reader, params *oaque.Params, decryptionkey *oaque.PrivateKey) io.Reader {
+	perm := new(starwave.Permission)
+	err := starwave.UnmarshalFromStream(perm, reader)
+	handle(err)
+
+	decryptionkey = oaque.NonDelegableKey(params, decryptionkey, perm.AttributeSet(starwave.KeyTypeDecryption))
+
+	decryptedreader, err := core.HybridStreamDecryptConcatenated(reader, decryptionkey)
+	handle(err)
+
+	return decryptedreader
+}
+
 func decryptfile(reader io.Reader, swc *swbind.SWClient, namespace string, myvk string, myhd *starwave.HierarchyDescriptor, verbose bool) io.Reader {
 	perm := new(starwave.Permission)
 	err := starwave.UnmarshalFromStream(perm, reader)
