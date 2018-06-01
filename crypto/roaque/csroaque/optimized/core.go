@@ -304,28 +304,52 @@ func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, 
 	return key, nil
 }
 
-func treeEncrypt(params *Params, left int, right int, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT, nodeID []int, depth int) (CiphertextList, error) {
+func min(x int, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+func max(x int, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+func treeEncrypt(params *Params, left int, right int, attrs oaque.AttributeList, lastAttrs oaque.AttributeList, preparedAttrs *oaque.PreparedAttributeList, revoc RevocationList, message *bn256.GT, nodeID []int, depth int) (CiphertextList, error) {
 	if left > right {
 		return nil, nil
 	}
 
 	flag := false
 	// This check can be reduced to O(log r), if we build segment tree on top of RevocationList
+	// There are supposed to be no overlap entry in RevocationList
+	cnt := 0
+	l := right - left + 1
 	for i := range revoc {
 		if left <= revoc[i] && revoc[i] <= right {
 			flag = true
-			break
+			cnt = cnt + 1
+			if cnt == l {
+				return nil, nil
+			}
 		}
 	}
+
+	var newPreparedAttrs *oaque.PreparedAttributeList
+	var newAttrs oaque.AttributeList
+	newAttrs = newAttributeList(params, nodeID, attrs, depth, true)
+	newPreparedAttrs = oaque.AdjustPreparedAttributeSet(params.params, lastAttrs, newAttrs, preparedAttrs)
 
 	if !flag {
 		var cipher CiphertextList
 		cipher = make(CiphertextList, 1, 1)
 		cipher[0] = new(Ciphertext)
 		var err error
-		newAttrs := newAttributeList(params, nodeID, attrs, depth, true)
 
-		cipher[0].ciphertext, err = oaque.Encrypt(nil, params.params, newAttrs, message)
+		cipher[0].ciphertext, err = oaque.EncryptPrecomputed(nil, params.params, newPreparedAttrs, message)
 		if err != nil {
 			return nil, err
 		}
@@ -344,13 +368,13 @@ func treeEncrypt(params *Params, left int, right int, attrs oaque.AttributeList,
 	mid := (left + right) / 2 // note should be div
 
 	nodeID[depth] = 0
-	cipherLeft, err = treeEncrypt(params, left, mid, attrs, revoc, message, nodeID, depth+1)
+	cipherLeft, err = treeEncrypt(params, left, mid, attrs, newAttrs, newPreparedAttrs, revoc, message, nodeID, depth+1)
 	if err != nil {
 		return nil, err
 	}
 
 	nodeID[depth] = 1
-	cipherRight, err = treeEncrypt(params, mid+1, right, attrs, revoc, message, nodeID, depth+1)
+	cipherRight, err = treeEncrypt(params, mid+1, right, attrs, newAttrs, newPreparedAttrs, revoc, message, nodeID, depth+1)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +397,8 @@ func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, me
 	var err error
 	nodeID := make([]int, *params.userHeight, *params.userHeight)
 
-	cipher.cipherlist, err = treeEncrypt(params, 1, *params.userSize, attrs, revoc, message, nodeID, 0)
+	preparedAttrs := oaque.PrepareAttributeSet(params.params, attrs)
+	cipher.cipherlist, err = treeEncrypt(params, 1, *params.userSize, attrs, attrs, preparedAttrs, revoc, message, nodeID, 0)
 	if err != nil {
 		return nil, err
 	}

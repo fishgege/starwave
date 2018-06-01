@@ -739,11 +739,11 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 		}
 
 		b.StartTimer()
-		cipher, err := Encrypt(params, attrs, revocs, message)
+		_, err = Encrypt(params, attrs, revocs, message)
 		b.StopTimer()
 
-		print("the number of ciphertext is: ")
-		println(len(cipher.cipherlist))
+		//print("the number of ciphertext is: ")
+		//println(len(cipher.cipherlist))
 
 		if err != nil {
 			b.Fatal(err)
