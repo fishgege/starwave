@@ -428,6 +428,35 @@ func PrepareAttributeSet(params *Params, attrs AttributeList) *PreparedAttribute
 	return (*PreparedAttributeList)(c)
 }
 
+// AdjustPreparedAttributeSet takes as input a prepared attribute list, and
+// uses it as a starting point to prepare another attribute list.
+func AdjustPreparedAttributeSet(params *Params, from AttributeList, to AttributeList, prepared *PreparedAttributeList) *PreparedAttributeList {
+	result := new(bn256.G1).Set((*bn256.G1)(prepared))
+	diff := new(big.Int)
+	temp := new(bn256.G1)
+	for i, fromAttr := range from {
+		if toAttr, ok := to[i]; ok {
+			if fromAttr.Cmp(toAttr) != 0 {
+				diff.Sub(toAttr, fromAttr)
+				if diff.Sign() == -1 {
+					diff.Add(diff, bn256.Order)
+				}
+				result.Add(result, temp.ScalarMult(params.H[i], diff))
+			}
+		} else {
+			diff.Sub(bn256.Order, fromAttr)
+			result.Add(result, temp.ScalarMult(params.H[i], diff))
+		}
+	}
+	for i, toAttr := range to {
+		if _, ok := from[i]; !ok {
+			result.Add(result, temp.ScalarMult(params.H[i], toAttr))
+		}
+	}
+
+	return (*PreparedAttributeList)(result)
+}
+
 // EncryptPrecomputed encrypts the provided message, using the provided
 // precomputation to speed up the process.
 func EncryptPrecomputed(s *big.Int, params *Params, precomputed *PreparedAttributeList, message *bn256.GT) (*Ciphertext, error) {
