@@ -8,8 +8,8 @@ import (
 	"io"
 	"reflect"
 
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 	"github.com/ucbrise/starwave/core"
-	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 type MessageType byte
@@ -99,17 +99,17 @@ func UnmarshalPrefixLength(buf []byte) (int, []byte) {
 /* Utilities for marshalling more complex structures. */
 
 type Marshallable interface {
-	Marshal() []byte
-	Unmarshal([]byte) bool
+	Marshal(bool) []byte
+	Unmarshal([]byte, bool, bool) bool
 }
 
-func MarshalIntoStream(m Marshallable) io.Reader {
-	marshalled := m.Marshal()
+func MarshalIntoStream(m Marshallable, compressed bool) io.Reader {
+	marshalled := m.Marshal(compressed)
 	length := putLength(make([]byte, MarshalledLengthLength), len(marshalled))
 	return io.MultiReader(bytes.NewReader(length), bytes.NewReader(marshalled))
 }
 
-func UnmarshalFromStream(m Marshallable, stream io.Reader) error {
+func UnmarshalFromStream(m Marshallable, stream io.Reader, compressed bool, checked bool) error {
 	lenbuf := make([]byte, MarshalledLengthLength)
 	_, err := io.ReadFull(stream, lenbuf)
 	if err != nil {
@@ -121,17 +121,17 @@ func UnmarshalFromStream(m Marshallable, stream io.Reader) error {
 	if err != nil {
 		return err
 	}
-	if !m.Unmarshal(buf) {
+	if !m.Unmarshal(buf, compressed, checked) {
 		return errors.New("Could not unmarshal from stream")
 	}
 	return nil
 }
 
-func MarshalAppendWithLength(m Marshallable, buf []byte) []byte {
+func MarshalAppendWithLength(m Marshallable, buf []byte, compressed bool) []byte {
 	if m == nil || reflect.ValueOf(m).IsNil() {
 		return MarshalAppendLength(0, buf)
 	}
-	marshalled := m.Marshal()
+	marshalled := m.Marshal(compressed)
 	buf = MarshalAppendLength(len(marshalled), buf)
 	buf = append(buf, marshalled...)
 	return buf
@@ -146,15 +146,16 @@ func UnmarshalPrefixWithLengthRaw(buf []byte) ([]byte, []byte) {
 	return buf[:length], buf[length:]
 }
 
-func UnmarshalPrefixWithLength(m Marshallable, buf []byte) []byte {
+func UnmarshalPrefixWithLength(m Marshallable, buf []byte, compressed bool, checked bool) ([]byte, bool) {
 	rawbytes, rest := UnmarshalPrefixWithLengthRaw(buf)
 	if rawbytes != nil {
-		success := m.Unmarshal(rawbytes)
+		success := m.Unmarshal(rawbytes, compressed, checked)
 		if !success {
-			return nil
+			return nil, true
 		}
+		return rest, true
 	}
-	return rest
+	return rest, false
 }
 
 type MarshallableString struct {
@@ -169,35 +170,35 @@ func NewMarshallableBytes(b []byte) *MarshallableString {
 	return &MarshallableString{string(b)}
 }
 
-func (ms *MarshallableString) Marshal() []byte {
+func (ms *MarshallableString) Marshal(compressed bool) []byte {
 	return []byte(ms.s)
 }
 
-func (ms *MarshallableString) Unmarshal(buf []byte) bool {
+func (ms *MarshallableString) Unmarshal(buf []byte, compressed bool, checked bool) bool {
 	ms.s = string(buf)
 	return true
 }
 
-func (hd *HierarchyDescriptor) Marshal() []byte {
+func (hd *HierarchyDescriptor) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(1024, TypeHierarchyDescriptor)
 
-	buf = MarshalAppendWithLength(NewMarshallableString(hd.Nickname), buf)
-	buf = MarshalAppendWithLength(hd.Params, buf)
+	buf = MarshalAppendWithLength(NewMarshallableString(hd.Nickname), buf, compressed)
+	buf = MarshalAppendWithLength(hd.Params, buf, compressed)
 	return buf
 }
 
-func (hd *HierarchyDescriptor) Unmarshal(marshalled []byte) bool {
+func (hd *HierarchyDescriptor) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeHierarchyDescriptor)
 
 	ms := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&ms, buf)
+	buf, _ = UnmarshalPrefixWithLength(&ms, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 	hd.Nickname = ms.s
 
-	hd.Params = new(oaque.Params)
-	buf = UnmarshalPrefixWithLength(hd.Params, buf)
+	hd.Params = new(wkdibe.Params)
+	buf, _ = UnmarshalPrefixWithLength(hd.Params, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -205,26 +206,26 @@ func (hd *HierarchyDescriptor) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (p *Permission) Marshal() []byte {
+func (p *Permission) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(1024, TypePermission)
 
-	buf = MarshalAppendWithLength(NewMarshallableBytes(core.URIToBytes(p.URI)), buf)
-	buf = MarshalAppendWithLength(NewMarshallableBytes(core.TimeToBytes(p.Time)), buf)
+	buf = MarshalAppendWithLength(NewMarshallableBytes(core.URIToBytes(p.URI)), buf, compressed)
+	buf = MarshalAppendWithLength(NewMarshallableBytes(core.TimeToBytes(p.Time)), buf, compressed)
 	return buf
 }
 
-func (p *Permission) Unmarshal(marshalled []byte) bool {
+func (p *Permission) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypePermission)
 
 	uri := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&uri, buf)
+	buf, _ = UnmarshalPrefixWithLength(&uri, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 	p.URI = core.URIFromBytes([]byte(uri.s))
 
 	time := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&time, buf)
+	buf, _ = UnmarshalPrefixWithLength(&time, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -233,43 +234,43 @@ func (p *Permission) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (dk *DecryptionKey) Marshal() []byte {
+func (dk *DecryptionKey) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(2048, TypeDecryptionKey)
 
-	buf = MarshalAppendWithLength(dk.Hierarchy, buf)
-	buf = MarshalAppendWithLength(dk.Key, buf)
-	buf = MarshalAppendWithLength(dk.Permissions, buf)
+	buf = MarshalAppendWithLength(dk.Hierarchy, buf, compressed)
+	buf = MarshalAppendWithLength(dk.Key, buf, compressed)
+	buf = MarshalAppendWithLength(dk.Permissions, buf, compressed)
 
 	typeBuf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(typeBuf, uint32(dk.KeyType))
-	buf = MarshalAppendWithLength(NewMarshallableBytes(typeBuf), buf)
+	buf = MarshalAppendWithLength(NewMarshallableBytes(typeBuf), buf, compressed)
 
 	return buf
 }
 
-func (dk *DecryptionKey) Unmarshal(marshalled []byte) bool {
+func (dk *DecryptionKey) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeDecryptionKey)
 
 	dk.Hierarchy = new(HierarchyDescriptor)
-	buf = UnmarshalPrefixWithLength(dk.Hierarchy, buf)
+	buf, _ = UnmarshalPrefixWithLength(dk.Hierarchy, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
-	dk.Key = new(oaque.PrivateKey)
-	buf = UnmarshalPrefixWithLength(dk.Key, buf)
+	dk.Key = new(wkdibe.SecretKey)
+	buf, _ = UnmarshalPrefixWithLength(dk.Key, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	dk.Permissions = new(Permission)
-	buf = UnmarshalPrefixWithLength(dk.Permissions, buf)
+	buf, _ = UnmarshalPrefixWithLength(dk.Permissions, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	typeString := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&typeString, buf)
+	buf, _ = UnmarshalPrefixWithLength(&typeString, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -278,26 +279,26 @@ func (dk *DecryptionKey) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (ed *EntityDescriptor) Marshal() []byte {
+func (ed *EntityDescriptor) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(2048, TypeEntityDescriptor)
 
-	buf = MarshalAppendWithLength(NewMarshallableString(ed.Nickname), buf)
-	buf = MarshalAppendWithLength(ed.Params, buf)
+	buf = MarshalAppendWithLength(NewMarshallableString(ed.Nickname), buf, compressed)
+	buf = MarshalAppendWithLength(ed.Params, buf, compressed)
 	return buf
 }
 
-func (ed *EntityDescriptor) Unmarshal(marshalled []byte) bool {
+func (ed *EntityDescriptor) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeEntityDescriptor)
 
 	ms := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&ms, buf)
+	buf, _ = UnmarshalPrefixWithLength(&ms, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 	ed.Nickname = ms.s
 
-	ed.Params = new(oaque.Params)
-	buf = UnmarshalPrefixWithLength(ed.Params, buf)
+	ed.Params = new(wkdibe.Params)
+	buf, _ = UnmarshalPrefixWithLength(ed.Params, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -305,26 +306,26 @@ func (ed *EntityDescriptor) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (es *EntitySecret) Marshal() []byte {
+func (es *EntitySecret) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(2048, TypeEntitySecret)
 
-	buf = MarshalAppendWithLength(es.Key, buf)
-	buf = MarshalAppendWithLength(es.Descriptor, buf)
+	buf = MarshalAppendWithLength(es.Key, buf, compressed)
+	buf = MarshalAppendWithLength(es.Descriptor, buf, compressed)
 
 	return buf
 }
 
-func (es *EntitySecret) Unmarshal(marshalled []byte) bool {
+func (es *EntitySecret) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeEntitySecret)
 
-	es.Key = new(oaque.MasterKey)
-	buf = UnmarshalPrefixWithLength(es.Key, buf)
+	es.Key = new(wkdibe.MasterKey)
+	buf, _ = UnmarshalPrefixWithLength(es.Key, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	es.Descriptor = new(EntityDescriptor)
-	buf = UnmarshalPrefixWithLength(es.Descriptor, buf)
+	buf, _ = UnmarshalPrefixWithLength(es.Descriptor, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -332,36 +333,37 @@ func (es *EntitySecret) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (esk *EncryptedSymmetricKey) Marshal() []byte {
+func (esk *EncryptedSymmetricKey) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(1024, TypeEncryptedSymmetricKey)
 
-	buf = MarshalAppendWithLength(esk.Ciphertext, buf)
-	buf = MarshalAppendWithLength(esk.Signature, buf)
-	buf = MarshalAppendWithLength(esk.Permissions, buf)
+	buf = MarshalAppendWithLength(esk.Ciphertext, buf, compressed)
+	buf = MarshalAppendWithLength(esk.Signature, buf, compressed)
+	buf = MarshalAppendWithLength(esk.Permissions, buf, compressed)
 
 	return buf
 }
 
-func (esk *EncryptedSymmetricKey) Unmarshal(marshalled []byte) bool {
+func (esk *EncryptedSymmetricKey) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
+	var present bool
 	buf := checkMessageType(marshalled, TypeEncryptedSymmetricKey)
 
-	esk.Ciphertext = new(oaque.Ciphertext)
-	buf = UnmarshalPrefixWithLength(esk.Ciphertext, buf)
+	esk.Ciphertext = new(wkdibe.Ciphertext)
+	buf, _ = UnmarshalPrefixWithLength(esk.Ciphertext, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
-	esk.Signature = new(oaque.Signature)
-	buf = UnmarshalPrefixWithLength(esk.Signature, buf)
+	esk.Signature = new(wkdibe.Signature)
+	buf, present = UnmarshalPrefixWithLength(esk.Signature, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
-	if esk.Signature.A0 == nil {
+	if !present {
 		esk.Signature = nil
 	}
 
 	esk.Permissions = new(Permission)
-	buf = UnmarshalPrefixWithLength(esk.Permissions, buf)
+	buf, _ = UnmarshalPrefixWithLength(esk.Permissions, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -369,21 +371,21 @@ func (esk *EncryptedSymmetricKey) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (em *EncryptedMessage) Marshal() []byte {
+func (em *EncryptedMessage) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(1024+MarshalledLengthLength+len(em.Message), TypeEncryptedMessage)
 
-	buf = MarshalAppendWithLength(em.Key, buf)
+	buf = MarshalAppendWithLength(em.Key, buf, compressed)
 	buf = append(buf, em.IV[:]...)
-	buf = MarshalAppendWithLength(NewMarshallableBytes(em.Message), buf)
+	buf = MarshalAppendWithLength(NewMarshallableBytes(em.Message), buf, compressed)
 
 	return buf
 }
 
-func (em *EncryptedMessage) Unmarshal(marshalled []byte) bool {
+func (em *EncryptedMessage) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeEncryptedMessage)
 
 	em.Key = new(EncryptedSymmetricKey)
-	buf = UnmarshalPrefixWithLength(em.Key, buf)
+	buf, _ = UnmarshalPrefixWithLength(em.Key, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -392,7 +394,7 @@ func (em *EncryptedMessage) Unmarshal(marshalled []byte) bool {
 	buf = buf[len(em.IV):]
 
 	message := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&message, buf)
+	buf, _ = UnmarshalPrefixWithLength(&message, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -404,7 +406,7 @@ func (em *EncryptedMessage) Unmarshal(marshalled []byte) bool {
 // UnmarshalPartial is like Unmarshal, except that it does not unmarshal the
 // encrypted symmetric key. This is useful for checking if the decryption is
 // already cached.
-func (em *EncryptedMessage) UnmarshalPartial(marshalled []byte) ([]byte, bool) {
+func (em *EncryptedMessage) UnmarshalPartial(marshalled []byte, compressed bool, checked bool) ([]byte, bool) {
 	buf := checkMessageType(marshalled, TypeEncryptedMessage)
 
 	ekey, buf := UnmarshalPrefixWithLengthRaw(buf)
@@ -416,7 +418,7 @@ func (em *EncryptedMessage) UnmarshalPartial(marshalled []byte) ([]byte, bool) {
 	buf = buf[len(em.IV):]
 
 	message := MarshallableString{}
-	buf = UnmarshalPrefixWithLength(&message, buf)
+	buf, _ = UnmarshalPrefixWithLength(&message, buf, compressed, checked)
 	if buf == nil {
 		return ekey, false
 	}
@@ -425,33 +427,33 @@ func (em *EncryptedMessage) UnmarshalPartial(marshalled []byte) ([]byte, bool) {
 	return ekey, true
 }
 
-func (bd *BroadeningDelegation) Marshal() []byte {
+func (bd *BroadeningDelegation) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(2048, TypeBroadeningDelegation)
 
-	buf = MarshalAppendWithLength(bd.Delegation, buf)
-	buf = MarshalAppendWithLength(bd.From, buf)
-	buf = MarshalAppendWithLength(bd.To, buf)
+	buf = MarshalAppendWithLength(bd.Delegation, buf, compressed)
+	buf = MarshalAppendWithLength(bd.From, buf, compressed)
+	buf = MarshalAppendWithLength(bd.To, buf, compressed)
 
 	return buf
 }
 
-func (bd *BroadeningDelegation) Unmarshal(marshalled []byte) bool {
+func (bd *BroadeningDelegation) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeBroadeningDelegation)
 
 	bd.Delegation = new(EncryptedMessage)
-	buf = UnmarshalPrefixWithLength(bd.Delegation, buf)
+	buf, _ = UnmarshalPrefixWithLength(bd.Delegation, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	bd.From = new(EntityDescriptor)
-	buf = UnmarshalPrefixWithLength(bd.From, buf)
+	buf, _ = UnmarshalPrefixWithLength(bd.From, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	bd.To = new(EntityDescriptor)
-	buf = UnmarshalPrefixWithLength(bd.To, buf)
+	buf, _ = UnmarshalPrefixWithLength(bd.To, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -459,33 +461,33 @@ func (bd *BroadeningDelegation) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (bdk *BroadeningDelegationWithKey) Marshal() []byte {
+func (bdk *BroadeningDelegationWithKey) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(2048, TypeBroadeningDelegationWithKey)
 
-	buf = MarshalAppendWithLength(bdk.Key, buf)
-	buf = MarshalAppendWithLength(bdk.To, buf)
-	buf = MarshalAppendWithLength(bdk.Hierarchy, buf)
+	buf = MarshalAppendWithLength(bdk.Key, buf, compressed)
+	buf = MarshalAppendWithLength(bdk.To, buf, compressed)
+	buf = MarshalAppendWithLength(bdk.Hierarchy, buf, compressed)
 
 	return buf
 }
 
-func (bdk *BroadeningDelegationWithKey) Unmarshal(marshalled []byte) bool {
+func (bdk *BroadeningDelegationWithKey) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeBroadeningDelegationWithKey)
 
 	bdk.Key = new(EncryptedMessage)
-	buf = UnmarshalPrefixWithLength(bdk.Key, buf)
+	buf, _ = UnmarshalPrefixWithLength(bdk.Key, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	bdk.To = new(EntityDescriptor)
-	buf = UnmarshalPrefixWithLength(bdk.To, buf)
+	buf, _ = UnmarshalPrefixWithLength(bdk.To, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
 
 	bdk.Hierarchy = new(HierarchyDescriptor)
-	buf = UnmarshalPrefixWithLength(bdk.Hierarchy, buf)
+	buf, _ = UnmarshalPrefixWithLength(bdk.Hierarchy, buf, compressed, checked)
 	if buf == nil {
 		return false
 	}
@@ -493,33 +495,33 @@ func (bdk *BroadeningDelegationWithKey) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (fd *FullDelegation) Marshal() []byte {
+func (fd *FullDelegation) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(2048+(1024*len(fd.Narrow)), TypeFullDelegation)
 
-	buf = MarshalAppendWithLength(fd.Permissions, buf)
-	buf = MarshalAppendWithLength(fd.Broad, buf)
+	buf = MarshalAppendWithLength(fd.Permissions, buf, compressed)
+	buf = MarshalAppendWithLength(fd.Broad, buf, compressed)
 	buf = MarshalAppendLength(len(fd.Narrow), buf)
 	/* In any normal FullDelegation, the "To" and "Hierarchy" fields in each
 	 * BroadeningDelgationWithKey are the same. In fact, the "To" field is
 	 * already in fd.Broad.
 	 */
 	if len(fd.Narrow) != 0 {
-		buf = MarshalAppendWithLength(fd.Narrow[0].Hierarchy, buf)
+		buf = MarshalAppendWithLength(fd.Narrow[0].Hierarchy, buf, compressed)
 	}
 	for _, narrowing := range fd.Narrow {
-		buf = MarshalAppendWithLength(narrowing.Key, buf)
+		buf = MarshalAppendWithLength(narrowing.Key, buf, compressed)
 	}
 
 	return buf
 }
 
-func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
+func (fd *FullDelegation) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeFullDelegation)
 
 	fd.Permissions = new(Permission)
-	buf = UnmarshalPrefixWithLength(fd.Permissions, buf)
+	buf, _ = UnmarshalPrefixWithLength(fd.Permissions, buf, compressed, checked)
 	fd.Broad = new(BroadeningDelegation)
-	buf = UnmarshalPrefixWithLength(fd.Broad, buf)
+	buf, _ = UnmarshalPrefixWithLength(fd.Broad, buf, compressed, checked)
 	if fd.Broad.Delegation == nil {
 		fd.Broad = nil
 	}
@@ -528,12 +530,12 @@ func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
 	var hierarchy *HierarchyDescriptor
 	if numNarrowing != 0 {
 		hierarchy = new(HierarchyDescriptor)
-		buf = UnmarshalPrefixWithLength(hierarchy, buf)
+		buf, _ = UnmarshalPrefixWithLength(hierarchy, buf, compressed, checked)
 	}
 	fd.Narrow = make([]*BroadeningDelegationWithKey, numNarrowing)
 	for i := range fd.Narrow {
 		key := new(EncryptedMessage)
-		buf = UnmarshalPrefixWithLength(key, buf)
+		buf, _ = UnmarshalPrefixWithLength(key, buf, compressed, checked)
 		if buf == nil {
 			return false
 		}
@@ -548,7 +550,7 @@ func (fd *FullDelegation) Unmarshal(marshalled []byte) bool {
 	return true
 }
 
-func (db *DelegationBundle) Marshal() []byte {
+func (db *DelegationBundle) Marshal(compressed bool) []byte {
 	buf := newMessageBuffer(4096, TypeDelegationBundle)
 
 	buf = MarshalAppendLength(len(db.Delegations), buf)
@@ -581,27 +583,27 @@ func (db *DelegationBundle) Marshal() []byte {
 				}
 			}
 		}
-		buf = MarshalAppendWithLength(to, buf)
-		buf = MarshalAppendWithLength(from, buf)
-		buf = MarshalAppendWithLength(h, buf)
+		buf = MarshalAppendWithLength(to, buf, compressed)
+		buf = MarshalAppendWithLength(from, buf, compressed)
+		buf = MarshalAppendWithLength(h, buf, compressed)
 	}
 	for _, delegation := range db.Delegations {
-		buf = MarshalAppendWithLength(delegation.Permissions, buf)
+		buf = MarshalAppendWithLength(delegation.Permissions, buf, compressed)
 		if delegation.Broad != nil {
-			buf = MarshalAppendWithLength(delegation.Broad.Delegation, buf)
+			buf = MarshalAppendWithLength(delegation.Broad.Delegation, buf, compressed)
 		} else {
-			buf = MarshalAppendWithLength(delegation.Broad, buf)
+			buf = MarshalAppendWithLength(delegation.Broad, buf, compressed)
 		}
 		buf = MarshalAppendLength(len(delegation.Narrow), buf)
 		for _, narrowing := range delegation.Narrow {
-			buf = MarshalAppendWithLength(narrowing.Key, buf)
+			buf = MarshalAppendWithLength(narrowing.Key, buf, compressed)
 		}
 	}
 
 	return buf
 }
 
-func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
+func (db *DelegationBundle) Unmarshal(marshalled []byte, compressed bool, checked bool) bool {
 	buf := checkMessageType(marshalled, TypeDelegationBundle)
 
 	numDelegations, buf := UnmarshalPrefixLength(buf)
@@ -612,15 +614,15 @@ func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
 	from := new(EntityDescriptor)
 	h := new(HierarchyDescriptor)
 	if numDelegations != 0 {
-		buf = UnmarshalPrefixWithLength(to, buf)
+		buf, _ = UnmarshalPrefixWithLength(to, buf, compressed, checked)
 		if buf == nil {
 			return false
 		}
-		buf = UnmarshalPrefixWithLength(from, buf)
+		buf, _ = UnmarshalPrefixWithLength(from, buf, compressed, checked)
 		if buf == nil {
 			return false
 		}
-		buf = UnmarshalPrefixWithLength(h, buf)
+		buf, _ = UnmarshalPrefixWithLength(h, buf, compressed, checked)
 		if buf == nil {
 			return false
 		}
@@ -629,7 +631,7 @@ func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
 	for i := range db.Delegations {
 		db.Delegations[i] = new(FullDelegation)
 		db.Delegations[i].Permissions = new(Permission)
-		buf = UnmarshalPrefixWithLength(db.Delegations[i].Permissions, buf)
+		buf, _ = UnmarshalPrefixWithLength(db.Delegations[i].Permissions, buf, compressed, checked)
 		if buf == nil {
 			return false
 		}
@@ -637,7 +639,7 @@ func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
 		db.Delegations[i].Broad.Delegation = new(EncryptedMessage)
 		db.Delegations[i].Broad.From = from
 		db.Delegations[i].Broad.To = to
-		buf = UnmarshalPrefixWithLength(db.Delegations[i].Broad.Delegation, buf)
+		buf, _ = UnmarshalPrefixWithLength(db.Delegations[i].Broad.Delegation, buf, compressed, checked)
 		if buf == nil {
 			return false
 		}
@@ -657,7 +659,7 @@ func (db *DelegationBundle) Unmarshal(marshalled []byte) bool {
 			db.Delegations[i].Narrow[j].Hierarchy = h
 			db.Delegations[i].Narrow[j].To = to
 			db.Delegations[i].Narrow[j].Key = new(EncryptedMessage)
-			buf = UnmarshalPrefixWithLength(db.Delegations[i].Narrow[j].Key, buf)
+			buf, _ = UnmarshalPrefixWithLength(db.Delegations[i].Narrow[j].Key, buf, compressed, checked)
 			if buf == nil {
 				return false
 			}

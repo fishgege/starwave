@@ -6,26 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/ucbrise/starwave/crypto/oaque"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 )
-
-// geSize is the base size in bytes of a marshalled group element. The size of
-// a marshalled element of G2 is geSize. The size of a marshalled element of G1
-// is 2 * geSize. The size of a marshalled element of GT is 6 * geSize.
-const geSize = 64
-
-// geShift is the base shift for a marshalled group element
-const geShift = 6
-
-// attributeIndexSize is the size, in bytes, of an attribute index
-const attributeIndexSize = 1
-
-func geIndex(encoded []byte, index int, len int) []byte {
-	return encoded[index<<geShift : (index+len)<<geShift]
-}
-
-// CiphertextMarshalledSize is the size of a marshalled ciphertext, in bytes.
-const CiphertextMarshalledSize = 9 << geShift
 
 // 16^5
 const LeaveRangeMarshalledSize = 5
@@ -44,11 +26,11 @@ func PadString(tmp string, max int) string {
 	return tmp
 }
 
-func (c *Cipher) Marshal() []byte {
+func (c *Cipher) Marshal(compressed bool) []byte {
 	marshalled := make([]byte, 0)
 
 	for i := 0; i < len(c.cipherlist); i++ {
-		tmp := c.cipherlist[i].ciphertext.Marshal()
+		tmp := c.cipherlist[i].ciphertext.Marshal(compressed)
 		//copy(marshalled[tot:tot+l], tmp)
 		marshalled = append(marshalled, tmp...)
 
@@ -73,7 +55,7 @@ func (c *Cipher) Marshal() []byte {
 	return marshalled
 }
 
-func (c *Cipher) UnMarshal(marshalled []byte) bool {
+func (c *Cipher) UnMarshal(marshalled []byte, compressed bool, checked bool) bool {
 	idx := 0
 	totlen, err := strconv.ParseUint(string(marshalled[0:TotLenMarshalledSize]), 16, 64)
 	if err != nil {
@@ -85,12 +67,13 @@ func (c *Cipher) UnMarshal(marshalled []byte) bool {
 
 	for i := 0; i < int(totlen); i++ {
 		tmp := &Ciphertext{}
-		tmp.ciphertext = &oaque.Ciphertext{}
-		err := tmp.ciphertext.Unmarshal(marshalled[idx : idx+CiphertextMarshalledSize])
+		tmp.ciphertext = &wkdibe.Ciphertext{}
+		ciphertextMarshalledSize := wkdibe.CiphertextMarshalledLength(compressed)
+		err := tmp.ciphertext.Unmarshal(marshalled[idx:idx+ciphertextMarshalledSize], compressed, checked)
 		if !err {
 			return false
 		}
-		idx = idx + CiphertextMarshalledSize
+		idx = idx + ciphertextMarshalledSize
 
 		{
 			t, err := strconv.ParseUint(string(marshalled[idx:idx+LeaveRangeMarshalledSize]), 16, 64)
@@ -126,7 +109,7 @@ func AppendWithIndex(a []byte, b []byte) []byte {
 	return append(a, b...)
 }
 
-func treeMarshal(pNode *privateKeyNode, left int, right int) ([]byte, error) {
+func treeMarshal(pNode *privateKeyNode, left int, right int, compressed bool) ([]byte, error) {
 	if left > right {
 		return nil, nil
 	}
@@ -148,18 +131,18 @@ func treeMarshal(pNode *privateKeyNode, left int, right int) ([]byte, error) {
 			tmpString = PadString(tmpString, LeaveRangeMarshalledSize)
 			tmp = append(tmp, tmpString...)
 		}
-		tmp = append(tmp, hex.EncodeToString(pNode.privateKey.Marshal())...)
+		tmp = append(tmp, hex.EncodeToString(pNode.privateKey.Marshal(compressed))...)
 		res = AppendWithIndex(res, tmp)
 	}
 
 	mid := (left + right) / 2
-	tmp, err := treeMarshal(pNode.left, left, mid)
+	tmp, err := treeMarshal(pNode.left, left, mid, compressed)
 	if err != nil {
 		return nil, err
 	}
 	res = append(res, tmp...)
 
-	tmp, err = treeMarshal(pNode.right, mid+1, right)
+	tmp, err = treeMarshal(pNode.right, mid+1, right, compressed)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +151,7 @@ func treeMarshal(pNode *privateKeyNode, left int, right int) ([]byte, error) {
 	return res, nil
 }
 
-func MarshalAttrs(attrs oaque.AttributeList) ([]byte, error) {
+func MarshalAttrs(attrs wkdibe.AttributeList) ([]byte, error) {
 	mattrs := make([]byte, 0)
 	midx := make([]byte, 0)
 	for idx, _ := range attrs {
@@ -189,8 +172,8 @@ func MarshalAttrs(attrs oaque.AttributeList) ([]byte, error) {
 	return append(res, mattrs...), nil
 }
 
-func (key *PrivateKey) Marshal(params *Params, attrs *oaque.AttributeList) ([]byte, error) {
-	res, err := treeMarshal(key.root, 1, *params.userSize)
+func (key *PrivateKey) Marshal(params *Params, attrs *wkdibe.AttributeList, compressed bool) ([]byte, error) {
+	res, err := treeMarshal(key.root, 1, *params.userSize, compressed)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +190,7 @@ func (key *PrivateKey) Marshal(params *Params, attrs *oaque.AttributeList) ([]by
 }
 
 type UnMarshalledKey struct {
-	Key         *oaque.PrivateKey
+	Key         *wkdibe.SecretKey
 	Left, Right int
 }
 
@@ -234,9 +217,9 @@ func UnMarshalIndexList(marshalled []byte) ([]int, error) {
 	return res, nil
 }
 
-func UnMarshalAttrsList(marshalled []byte, index []int) (*oaque.AttributeList, error) {
+func UnMarshalAttrsList(marshalled []byte, index []int) (*wkdibe.AttributeList, error) {
 	idx := 0
-	res := make(oaque.AttributeList)
+	res := make(wkdibe.AttributeList)
 	for i := 0; i < len(index); i++ {
 		attrlen, err := UnMarshalIndex(marshalled[idx : idx+TotLenMarshalledSize])
 		if err != nil {
@@ -250,13 +233,13 @@ func UnMarshalAttrsList(marshalled []byte, index []int) (*oaque.AttributeList, e
 		}
 		tmp := big.NewInt(0)
 		tmp.UnmarshalText([]byte(tmpString))
-		res[oaque.AttributeIndex(index[i])] = tmp
+		res[wkdibe.AttributeIndex(index[i])] = tmp
 		idx = idx + attrlen
 	}
 	return &res, nil
 }
 
-func UnMarshalAttrs(marshalled []byte) (*oaque.AttributeList, error) {
+func UnMarshalAttrs(marshalled []byte) (*wkdibe.AttributeList, error) {
 	idxLen, err := UnMarshalIndex(marshalled[0:TotLenMarshalledSize])
 	if err != nil {
 		return nil, err
@@ -282,7 +265,7 @@ func UnMarshalInt(marshalled []byte) (int, error) {
 	return int(t), nil
 }
 
-func UnMarshalSingleKey(marshalled []byte) (*UnMarshalledKey, error) {
+func UnMarshalSingleKey(marshalled []byte, compressed bool, checked bool) (*UnMarshalledKey, error) {
 	tmp := &UnMarshalledKey{}
 	var err error
 	tmp.Left, err = UnMarshalInt(marshalled[0:LeaveRangeMarshalledSize])
@@ -299,8 +282,8 @@ func UnMarshalSingleKey(marshalled []byte) (*UnMarshalledKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmp.Key = new(oaque.PrivateKey)
-	ok := tmp.Key.Unmarshal(tmpString)
+	tmp.Key = new(wkdibe.SecretKey)
+	ok := tmp.Key.Unmarshal(tmpString, compressed, checked)
 	if !ok {
 		return nil, errors.New("UnMarshalSingleKey Error")
 	}
@@ -308,7 +291,7 @@ func UnMarshalSingleKey(marshalled []byte) (*UnMarshalledKey, error) {
 	return tmp, nil
 }
 
-func UnMarshalKeySeq(marshalled []byte) ([]*UnMarshalledKey, error) {
+func UnMarshalKeySeq(marshalled []byte, compressed bool, checked bool) ([]*UnMarshalledKey, error) {
 	idx := 0
 	res := make([]*UnMarshalledKey, 0)
 	for idx < len(marshalled) {
@@ -318,7 +301,7 @@ func UnMarshalKeySeq(marshalled []byte) ([]*UnMarshalledKey, error) {
 		}
 		idx = idx + TotLenMarshalledSize
 
-		tmp, err := UnMarshalSingleKey(marshalled[idx : idx+keylen])
+		tmp, err := UnMarshalSingleKey(marshalled[idx:idx+keylen], compressed, checked)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +312,7 @@ func UnMarshalKeySeq(marshalled []byte) ([]*UnMarshalledKey, error) {
 	return res, nil
 }
 
-func UnMarshalKey(marshalled []byte) ([]*UnMarshalledKey, *oaque.AttributeList, error) {
+func UnMarshalKey(marshalled []byte, compressed bool, checked bool) ([]*UnMarshalledKey, *wkdibe.AttributeList, error) {
 	attrsLen, err := UnMarshalIndex(marshalled[0:TotLenMarshalledSize])
 	if err != nil {
 		return nil, nil, err
@@ -345,7 +328,7 @@ func UnMarshalKey(marshalled []byte) ([]*UnMarshalledKey, *oaque.AttributeList, 
 		return nil, nil, err
 	}
 
-	key, err := UnMarshalKeySeq(marshalled[TotLenMarshalledSize*2+attrsLen : TotLenMarshalledSize*2+attrsLen+keyLen])
+	key, err := UnMarshalKeySeq(marshalled[TotLenMarshalledSize*2+attrsLen:TotLenMarshalledSize*2+attrsLen+keyLen], compressed, checked)
 	if err != nil {
 		return nil, nil, err
 	}

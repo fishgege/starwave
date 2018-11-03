@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/samkumar/embedded-pairing/lang/go/cryptutils"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 	"github.com/ucbrise/starwave/core"
-	"github.com/ucbrise/starwave/crypto/cryptutils"
-	"github.com/ucbrise/starwave/crypto/oaque"
 )
 
 // Types of keys
@@ -31,23 +31,29 @@ func keyTypeCompatible(from int, to int) bool {
 	return from == KeyTypeMaster || from == to
 }
 
+// Compressed/Checked options for marshalling
+const (
+	LayeredMarshalCompressed = true
+	LayeredMarshalChecked    = true
+)
+
 // HierarchyDescriptor is the public information representing a hierarchy.
 type HierarchyDescriptor struct {
 	Nickname string
-	Params   *oaque.Params
+	Params   *wkdibe.Params
 }
 
 // HashToZp hashes the hierarchy, independent of its nickname, to a single
 // number from 0 to p - 1.
 func (hd *HierarchyDescriptor) HashToZp() *big.Int {
-	return cryptutils.HashToZp(hd.Params.Marshal())
+	return cryptutils.HashToZp(hd.Params.Marshal(LayeredMarshalCompressed))
 }
 
 // DecryptionKey represents a key that can be used to decrypt/sign messages on a
 // set of resources and time range.
 type DecryptionKey struct {
 	Hierarchy   *HierarchyDescriptor
-	Key         *oaque.PrivateKey
+	Key         *wkdibe.SecretKey
 	Permissions *Permission
 	KeyType     int
 }
@@ -105,8 +111,8 @@ func (p *Permission) Equals(other *Permission) bool {
 	return p.Contains(other) && other.Contains(p)
 }
 
-// AttributeSet converts a permission into an attribute list for use with OAQUE.
-func (p *Permission) AttributeSet(keyType int) oaque.AttributeList {
+// AttributeSet converts a permission into an attribute list for use with wkdibe.
+func (p *Permission) AttributeSet(keyType int) wkdibe.AttributeList {
 	var prefix []byte
 	switch keyType {
 	case KeyTypeDecryption:
@@ -123,23 +129,23 @@ func (p *Permission) AttributeSet(keyType int) oaque.AttributeList {
 // entity. It is only used for broadening permissions.
 type EntityDescriptor struct {
 	Nickname string
-	Params   *oaque.Params
+	Params   *wkdibe.Params
 }
 
 // EntitySecret represents the secret information that an entity possesses.
 type EntitySecret struct {
-	Key        *oaque.MasterKey
+	Key        *wkdibe.MasterKey
 	Descriptor *EntityDescriptor
 }
 
-// EncryptedSymmetricKey represents a symmetric key encrypted using OAQUE. This
+// EncryptedSymmetricKey represents a symmetric key encrypted using wkdibe. This
 // is a useful primitive for applications that repeatedly publish on the same
 // attribute set, allowing the asymmetric OAQUE-based encryption to be performed
 // only once, and the actual messages on that attribute set to be encrypted with
 // the same symmetric key.
 type EncryptedSymmetricKey struct {
-	Ciphertext  *oaque.Ciphertext
-	Signature   *oaque.Signature
+	Ciphertext  *wkdibe.Ciphertext
+	Signature   *wkdibe.Signature
 	Permissions *Permission
 }
 
@@ -159,18 +165,18 @@ type EncryptedMessage struct {
 type Encryptor struct {
 	Hierarchy   *HierarchyDescriptor
 	Permissions *Permission
-	Precomputed *oaque.PreparedAttributeList
-	SigningKey  *oaque.PrivateKey
-	Signer      *oaque.PreparedAttributeList
+	Precomputed *wkdibe.PreparedAttributeList
+	SigningKey  *wkdibe.SecretKey
+	Signer      *wkdibe.PreparedAttributeList
 }
 
 // Decryptor represents an object storing cached state that allows fast
 // decryption for a given attribute set. In particular, it caches the generation
 // of the private key for the exact attribute set.
 type Decryptor struct {
-	Params   *oaque.Params
-	Key      *oaque.PrivateKey
-	Verifier *oaque.PreparedAttributeList
+	Params   *wkdibe.Params
+	Key      *wkdibe.SecretKey
+	Verifier *wkdibe.PreparedAttributeList
 }
 
 // BroadeningDelegation represents a delegation of permissions, that allows
@@ -260,20 +266,9 @@ const (
 func CreateHierarchy(random io.Reader, nickname string) (*HierarchyDescriptor, *DecryptionKey, error) {
 	numSlots := MaxURIDepth + TimeDepth
 
-	params, masterKey, err := oaque.Setup(rand.Reader, numSlots, true)
-	if err != nil {
-		return nil, nil, err
-	}
+	params, masterKey := wkdibe.Setup(numSlots, true)
 
-	randomInt, err := oaque.RandomInZp(random)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	key, err := oaque.KeyGen(randomInt, params, masterKey, make(map[oaque.AttributeIndex]*big.Int))
-	if err != nil {
-		return nil, nil, err
-	}
+	key := wkdibe.KeyGen(params, masterKey, make(map[wkdibe.AttributeIndex]*big.Int))
 
 	hd := &HierarchyDescriptor{
 		Nickname: nickname,
@@ -302,14 +297,7 @@ func DelegateRaw(random io.Reader, from *DecryptionKey, perm *Permission, keyTyp
 	}
 	attrs := perm.AttributeSet(keyType)
 
-	t, err := oaque.RandomInZp(random)
-	if err != nil {
-		return nil, err
-	}
-	qualified, err := oaque.QualifyKey(t, from.Hierarchy.Params, from.Key, attrs)
-	if err != nil {
-		return nil, err
-	}
+	qualified := wkdibe.QualifyKey(from.Hierarchy.Params, from.Key, attrs)
 
 	return &DecryptionKey{
 		Hierarchy:   from.Hierarchy,
@@ -328,10 +316,7 @@ func CreateEntity(random io.Reader, nickname string) (*EntityDescriptor, *Entity
 	// One extra slot at the end, for the hierarchy name
 	numSlots := MaxURIDepth + TimeDepth + 1
 
-	params, masterKey, err := oaque.Setup(rand.Reader, numSlots, false)
-	if err != nil {
-		return nil, nil, err
-	}
+	params, masterKey := wkdibe.Setup(numSlots, false)
 
 	entity := &EntityDescriptor{
 		Nickname: nickname,
@@ -353,18 +338,10 @@ func DelegateBroadening(random io.Reader, hd *HierarchyDescriptor, from *EntityS
 	attrs := perm.AttributeSet(keyType)
 	attrs[MaxURIDepth+TimeDepth] = hd.HashToZp()
 
-	s, err := oaque.RandomInZp(random)
-	if err != nil {
-		return nil, err
-	}
-
-	key, err := oaque.KeyGen(s, from.Descriptor.Params, from.Key, attrs)
-	if err != nil {
-		return nil, err
-	}
+	key := wkdibe.KeyGen(from.Descriptor.Params, from.Key, attrs)
 
 	// Encrypt key from "From" system under same attribute set in "To" system
-	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrepareAttributeSet(to.Params, attrs), key.Marshal())
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, wkdibe.PrepareAttributeList(to.Params, attrs), key.Marshal(LayeredMarshalCompressed))
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +376,7 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 	}
 
 	// Encrypt the decryption key under same attribute set in "To" system
-	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, oaque.PrepareAttributeSet(to.Params, attrs), key.Key.Marshal())
+	encryptedKey, encryptedMessage, err := core.HybridEncrypt(random, to.Params, wkdibe.PrepareAttributeList(to.Params, attrs), key.Key.Marshal(LayeredMarshalCompressed))
 	if err != nil {
 		return nil, err
 	}
@@ -420,18 +397,18 @@ func DelegateBroadeningWithKey(random io.Reader, from *DecryptionKey, to *Entity
 // ResolveChain resolves a chain of broadening delegations, the first of which
 // contains a key. In other words, it performs permission inheritance.
 func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegation, to *EntitySecret, keyType int) *DecryptionKey {
-	key := oaque.NonDelegableKeyFromMaster(to.Descriptor.Params, to.Key, make(oaque.AttributeList))
+	key := wkdibe.NonDelegableKeyGen(to.Descriptor.Params, to.Key, make(wkdibe.AttributeList))
 	for i := len(rest) - 1; i >= 0; i-- {
 		delegation := rest[i]
 		perm := delegation.Delegation.Key.Permissions
 		attrs := perm.AttributeSet(keyType)
 		attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
-		subkey := oaque.NonDelegableKey(delegation.To.Params, key, attrs)
+		subkey := wkdibe.NonDelegableQualifyKey(delegation.To.Params, key, attrs)
 		nextKeyBytes, ok := core.HybridDecrypt(delegation.Delegation.Key.Ciphertext, delegation.Delegation.Message, subkey, &delegation.Delegation.IV)
 		if !ok {
 			return nil
 		}
-		ok = key.Unmarshal(nextKeyBytes)
+		ok = key.Unmarshal(nextKeyBytes, LayeredMarshalCompressed, LayeredMarshalChecked)
 		if !ok {
 			return nil
 		}
@@ -440,12 +417,12 @@ func ResolveChain(first *BroadeningDelegationWithKey, rest []*BroadeningDelegati
 	perm := first.Key.Key.Permissions
 	attrs := perm.AttributeSet(keyType)
 	attrs[MaxURIDepth+TimeDepth] = first.Hierarchy.HashToZp()
-	subkey := oaque.NonDelegableKey(first.To.Params, key, attrs)
+	subkey := wkdibe.NonDelegableQualifyKey(first.To.Params, key, attrs)
 	finalKeyBytes, ok := core.HybridDecrypt(first.Key.Key.Ciphertext, first.Key.Message, subkey, &first.Key.IV)
 	if !ok {
 		return nil
 	}
-	ok = key.Unmarshal(finalKeyBytes)
+	ok = key.Unmarshal(finalKeyBytes, LayeredMarshalCompressed, LayeredMarshalChecked)
 	if !ok {
 		return nil
 	}
@@ -502,14 +479,14 @@ func PrepareEncryption(hd *HierarchyDescriptor, perm *Permission, key *Decryptio
 	encryptor := &Encryptor{
 		Hierarchy:   hd,
 		Permissions: perm,
-		Precomputed: oaque.PrepareAttributeSet(hd.Params, attrs),
+		Precomputed: wkdibe.PrepareAttributeList(hd.Params, attrs),
 	}
 	if key != nil {
 		if !keyTypeCompatible(key.KeyType, KeyTypeSignature) {
 			panic("Incorrect key type")
 		}
-		encryptor.SigningKey = oaque.NonDelegableKey(hd.Params, key.Key, signingAttrs)
-		encryptor.Signer = oaque.PrepareAttributeSet(hd.Params, signingAttrs)
+		encryptor.SigningKey = wkdibe.NonDelegableQualifyKey(hd.Params, key.Key, signingAttrs)
+		encryptor.Signer = wkdibe.PrepareAttributeList(hd.Params, signingAttrs)
 	}
 	return encryptor
 }
@@ -532,10 +509,7 @@ func (e *Encryptor) Encrypt(random io.Reader, message []byte) (*EncryptedMessage
 	}
 
 	if e.SigningKey != nil {
-		em.Key.Signature, err = oaque.SignPrecomputed(nil, e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, cryptutils.HashToZp(encryptedKey.Marshal()))
-		if err != nil {
-			return nil, err
-		}
+		em.Key.Signature = wkdibe.SignPrepared(e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, new(cryptutils.Signable).Hash(encryptedKey.Marshal(LayeredMarshalCompressed)))
 	}
 
 	return em, nil
@@ -555,10 +529,7 @@ func (e *Encryptor) GenerateEncryptedSymmetricKey(random io.Reader, symm []byte)
 	}
 
 	if e.SigningKey != nil {
-		esk.Signature, err = oaque.SignPrecomputed(nil, e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, cryptutils.HashToZp(ct.Marshal()))
-		if err != nil {
-			return nil, err
-		}
+		esk.Signature = wkdibe.SignPrepared(e.Hierarchy.Params, e.SigningKey, e.Permissions.AttributeSet(KeyTypeSignature), e.Signer, new(cryptutils.Signable).Hash(ct.Marshal(LayeredMarshalCompressed)))
 	}
 
 	return esk, nil
@@ -595,9 +566,9 @@ func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
 		panic("Incorrect key type")
 	}
 	attrs := perm.AttributeSet(KeyTypeDecryption)
-	childKey := oaque.NonDelegableKey(key.Hierarchy.Params, key.Key, attrs)
+	childKey := wkdibe.NonDelegableQualifyKey(key.Hierarchy.Params, key.Key, attrs)
 	attrs = perm.AttributeSet(KeyTypeSignature)
-	precomputed := oaque.PrepareAttributeSet(key.Hierarchy.Params, attrs)
+	precomputed := wkdibe.PrepareAttributeList(key.Hierarchy.Params, attrs)
 	return &Decryptor{
 		Params:   key.Hierarchy.Params,
 		Key:      childKey,
@@ -610,7 +581,7 @@ func PrepareDecryption(perm *Permission, key *DecryptionKey) *Decryptor {
 func (d *Decryptor) Decrypt(c *EncryptedMessage, checkSignature bool) []byte {
 	ct := c.Key.Ciphertext
 	if checkSignature {
-		ok := oaque.VerifyPrecomputed(d.Params, d.Verifier, c.Key.Signature, cryptutils.HashToZp(ct.Marshal()))
+		ok := wkdibe.VerifyPrepared(d.Params, d.Verifier, c.Key.Signature, new(cryptutils.Signable).Hash(ct.Marshal(LayeredMarshalCompressed)))
 		if !ok {
 			return nil
 		}
@@ -628,7 +599,7 @@ func (d *Decryptor) Decrypt(c *EncryptedMessage, checkSignature bool) []byte {
 func (d *Decryptor) DecryptSymmetricKey(c *EncryptedSymmetricKey, symm []byte, checkSignature bool) []byte {
 	ct := c.Ciphertext
 	if checkSignature {
-		ok := oaque.VerifyPrecomputed(d.Params, d.Verifier, c.Signature, cryptutils.HashToZp(ct.Marshal()))
+		ok := wkdibe.VerifyPrepared(d.Params, d.Verifier, c.Signature, new(cryptutils.Signable).Hash(ct.Marshal(LayeredMarshalCompressed)))
 		if !ok {
 			return nil
 		}

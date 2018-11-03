@@ -8,23 +8,17 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ucbrise/starwave/crypto/oaque"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 )
 
-func oaqueHelper(t *testing.T) (*oaque.Params, *oaque.PreparedAttributeList, *oaque.PrivateKey) {
-	params, master, err := oaque.Setup(rand.Reader, 20, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+func oaqueHelper(t *testing.T) (*wkdibe.Params, *wkdibe.PreparedAttributeList, *wkdibe.SecretKey) {
+	params, master := wkdibe.Setup(20, false)
 
-	attrs := make(oaque.AttributeList)
+	attrs := make(wkdibe.AttributeList)
 	attrs[2] = big.NewInt(6)
 
-	precomputed := oaque.PrepareAttributeSet(params, attrs)
-	key, err := oaque.KeyGen(nil, params, master, attrs)
-	if err != nil {
-		t.Fatal(err)
-	}
+	precomputed := wkdibe.PrepareAttributeList(params, attrs)
+	key := wkdibe.KeyGen(params, master, attrs)
 
 	return params, precomputed, key
 }
@@ -96,7 +90,7 @@ func TestHybridStreamEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fullereader := io.MultiReader(bytes.NewReader(encryptedkey.Marshal()), ereader)
+	fullereader := io.MultiReader(bytes.NewReader(encryptedkey.Marshal(HybridStreamCompressed)), ereader)
 
 	dreader, err := HybridStreamDecryptConcatenated(fullereader, key)
 	if err != nil {

@@ -9,17 +9,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ucbrise/starwave/crypto/oaque"
+	"github.com/samkumar/embedded-pairing/lang/go/cryptutils"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 	"vuvuzela.io/crypto/bn256"
 )
 
+const testCompressed = false
 const attrMaxSize, userMaxSize = 10, 10
 
-func NewMessage() *bn256.GT {
-	return bn256.Pair(new(bn256.G1).ScalarBaseMult(big.NewInt(3)), new(bn256.G2).ScalarBaseMult(big.NewInt(5)))
+func NewMessage() *cryptutils.Encryptable {
+	return new(cryptutils.Encryptable).Random()
 }
 
-func encryptHelper(t *testing.T, params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) *Cipher {
+func encryptHelper(t *testing.T, params *Params, attrs wkdibe.AttributeList, revoc RevocationList, message *cryptutils.Encryptable) *Cipher {
 	cipher, err := Encrypt(params, attrs, revoc, message)
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +29,7 @@ func encryptHelper(t *testing.T, params *Params, attrs oaque.AttributeList, revo
 	return cipher
 }
 
-func genFromMasterHelper(t *testing.T, params *Params, masterkey *MasterKey, attrs oaque.AttributeList, userNum int, newUser int) *PrivateKey {
+func genFromMasterHelper(t *testing.T, params *Params, masterkey *MasterKey, attrs wkdibe.AttributeList, userNum int, newUser int) *PrivateKey {
 	// Generate key for the single attributes
 	key, err := KeyGen(params, masterkey, attrs, userNum, newUser)
 	if err != nil {
@@ -36,7 +38,7 @@ func genFromMasterHelper(t *testing.T, params *Params, masterkey *MasterKey, att
 	return key
 }
 
-func qualifyHelper(t *testing.T, params *Params, key *PrivateKey, attrs oaque.AttributeList, lEnd int, rEnd int) *PrivateKey {
+func qualifyHelper(t *testing.T, params *Params, key *PrivateKey, attrs wkdibe.AttributeList, lEnd int, rEnd int) *PrivateKey {
 	key, err := QualifyKey(params, key, attrs, lEnd, rEnd)
 	if err != nil {
 		t.Fatal(err)
@@ -44,14 +46,14 @@ func qualifyHelper(t *testing.T, params *Params, key *PrivateKey, attrs oaque.At
 	return key
 }
 
-func decryptAndCheckHelper(t *testing.T, params *Params, key *PrivateKey, cipher *Cipher, message *bn256.GT) {
+func decryptAndCheckHelper(t *testing.T, params *Params, key *PrivateKey, cipher *Cipher, message *cryptutils.Encryptable) {
 	decrypted := Decrypt(params, key, cipher)
 	if decrypted == nil || !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 		t.Fatal("Original and decrypted messages differ")
 	}
 }
 
-func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, cipher *Cipher, message *bn256.GT) {
+func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, cipher *Cipher, message *cryptutils.Encryptable) {
 	decrypted := Decrypt(params, key, cipher)
 	if decrypted == nil || !bytes.Equal(message.Marshal(), decrypted.Marshal()) {
 		return
@@ -59,7 +61,7 @@ func decryptAndCheckHelper2(t *testing.T, params *Params, key *PrivateKey, ciphe
 	t.Fatal("Original and decrypted messages are the same")
 }
 
-func attributeFromMasterHelper(t *testing.T, attrs oaque.AttributeList, revoc RevocationList) {
+func attributeFromMasterHelper(t *testing.T, attrs wkdibe.AttributeList, revoc RevocationList) {
 	// Set up parameters
 	params, masterkey, err := Setup(rand.Reader, attrMaxSize, userMaxSize)
 	if err != nil {
@@ -79,15 +81,15 @@ func attributeFromMasterHelper(t *testing.T, attrs oaque.AttributeList, revoc Re
 }
 
 func TestSingleAttribute(t *testing.T) {
-	attributeFromMasterHelper(t, oaque.AttributeList{0: big.NewInt(0)}, nil)
+	attributeFromMasterHelper(t, wkdibe.AttributeList{0: big.NewInt(1)}, nil)
 }
 
 func TestSingleSparseAttribute(t *testing.T) {
-	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0)}, nil)
+	attributeFromMasterHelper(t, wkdibe.AttributeList{1: big.NewInt(1)}, nil)
 }
 
 func TestMultipleSparseAttributes(t *testing.T) {
-	attributeFromMasterHelper(t, oaque.AttributeList{1: big.NewInt(0), attrMaxSize - 1: big.NewInt(123)}, nil)
+	attributeFromMasterHelper(t, wkdibe.AttributeList{1: big.NewInt(1), attrMaxSize - 1: big.NewInt(123)}, nil)
 }
 
 func TestMarshal(t *testing.T) {
@@ -96,8 +98,8 @@ func TestMarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{1, 2, 4}
 	revoc2 := RevocationList{1, 2, 3}
@@ -110,16 +112,16 @@ func TestMarshal(t *testing.T) {
 	key1 := genFromMasterHelper(t, params, masterkey, attrs1, 0, 4)
 	key2 := qualifyHelper(t, params, key1, attrs2, *key1.lEnd, *key1.lEnd+2)
 
-	m1 := ciphertext.Marshal()
-	m2 := ciphertext2.Marshal()
+	m1 := ciphertext.Marshal(testCompressed)
+	m2 := ciphertext2.Marshal(testCompressed)
 
 	c1 := &Cipher{attrs: attrs2}
 	c2 := &Cipher{attrs: attrs2}
 
-	if err := c1.UnMarshal(m1); !err {
+	if err := c1.UnMarshal(m1, testCompressed, true); !err {
 		t.Fatal("UnMarshal for c1 failed")
 	}
-	if err := c2.UnMarshal(m2); !err {
+	if err := c2.UnMarshal(m2, testCompressed, true); !err {
 		t.Fatal("UnMarshal for c2 failed")
 	}
 
@@ -134,8 +136,8 @@ func TestQualifyKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{1, 2, 4}
 	revoc2 := RevocationList{1, 2, 3}
@@ -164,8 +166,8 @@ func TestQualifyKey2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{1, 2, 3, 7, 8}
 	revoc2 := RevocationList{1, 2, 3, 7, 8, 9}
@@ -193,8 +195,8 @@ func TestQualifyKey3(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{1, 5}
 
@@ -219,8 +221,8 @@ func TestQualifyKey4(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{1, 2, 4, 5, 6}
 	revoc2 := RevocationList{1, 2, 3, 4, 5, 6}
@@ -248,8 +250,8 @@ func TestQualifyKey5(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{5, 6}
 	revoc2 := RevocationList{4, 5, 6}
@@ -277,8 +279,8 @@ func TestQualifyKey6(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attrs1 := oaque.AttributeList{2: big.NewInt(4)}
-	attrs2 := oaque.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
+	attrs1 := wkdibe.AttributeList{2: big.NewInt(4)}
+	attrs2 := wkdibe.AttributeList{2: big.NewInt(4), attrMaxSize - 1 - 2: big.NewInt(123)}
 
 	revoc1 := RevocationList{3, 4}
 	revoc2 := RevocationList{3, 4, 5}
@@ -299,16 +301,8 @@ func TestQualifyKey6(t *testing.T) {
 	decryptAndCheckHelper2(t, params, key2, ciphertext2, message)
 }
 
-func NewRandomMessage(random io.Reader) (*bn256.GT, error) {
-	_, g1, err := bn256.RandomG1(random)
-	if err != nil {
-		return nil, err
-	}
-	_, g2, err := bn256.RandomG2(random)
-	if err != nil {
-		return nil, err
-	}
-	return bn256.Pair(g1, g2), nil
+func NewRandomMessage(random io.Reader) (*cryptutils.Encryptable, error) {
+	return new(cryptutils.Encryptable).Random(), nil
 }
 
 // The maximum number of leaves in the tree is 2000
@@ -335,15 +329,15 @@ func QualifyKeyBenchmarkHelper(b *testing.B, numAttributes int, numLeaves int) {
 			b.Fatal(err)
 		}
 
-		attrs := make(oaque.AttributeList)
+		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes-1; i++ {
-			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
 		}
 
-		key, err := KeyGen(params, master, oaque.AttributeList{0: attrs[0]}, 0, maxLeaves)
+		key, err := KeyGen(params, master, wkdibe.AttributeList{0: attrs[0]}, 0, maxLeaves)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -434,9 +428,9 @@ func EncryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocat
 			b.Fatal(err)
 		}
 
-		attrs := make(oaque.AttributeList)
+		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -556,9 +550,9 @@ func DecryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocat
 			b.Fatal(err)
 		}
 
-		attrs := make(oaque.AttributeList)
+		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -602,7 +596,7 @@ func DecryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocat
 		//	println(time.Now().Second())
 		decrypted := Decrypt(params, key, ciphertext)
 		//println(time.Now().Second())
-		//oaque.Decrypt(key.root.keyList[0].key, ciphertext.cipherlist[0].ciphertext)
+		//wkdibe.Decrypt(key.root.keyList[0].key, ciphertext.cipherlist[0].ciphertext)
 		//println(time.Now().Second())
 		//println(b.N, i)
 		b.StopTimer()
@@ -706,9 +700,9 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 			b.Fatal(err)
 		}
 
-		attrs := make(oaque.AttributeList)
+		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -835,9 +829,9 @@ func DecryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 			b.Fatal(err)
 		}
 
-		attrs := make(oaque.AttributeList)
+		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[oaque.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
 			if err != nil {
 				b.Fatal(err)
 			}

@@ -7,9 +7,11 @@ import (
 	"time"
 )
 
+const TestMarshalCompressed = true
+
 func remarshalHelper(m Marshallable) {
-	b := m.Marshal()
-	success := m.Unmarshal(b)
+	b := m.Marshal(TestMarshalCompressed)
+	success := m.Unmarshal(b, TestMarshalCompressed, true)
 	if !success {
 		panic("Remarshalling failed")
 	}
@@ -116,8 +118,8 @@ func TestPanicOnUnexpectedMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	marshalled := hierarchy.Marshal()
-	master.Unmarshal(marshalled)
+	marshalled := hierarchy.Marshal(TestMarshalCompressed)
+	master.Unmarshal(marshalled, TestMarshalCompressed, true)
 
 	t.Fatal("Did not panic when unmarshalling unexpected message")
 }

@@ -1,30 +1,30 @@
 package csroaque_opt
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 
-	"github.com/ucbrise/starwave/crypto/oaque"
-	"vuvuzela.io/crypto/bn256"
+	"github.com/samkumar/embedded-pairing/lang/go/cryptutils"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 )
 
 type Params struct {
 	userSize   *int
 	userHeight *int
-	params     *oaque.Params
+	params     *wkdibe.Params
 }
 
 type MasterKey struct {
-	masterKey *oaque.MasterKey
+	masterKey *wkdibe.MasterKey
 }
 
 type privateKeyNode struct {
 	left       *privateKeyNode
 	right      *privateKeyNode
 	delegable  *bool
-	privateKey *oaque.PrivateKey
+	privateKey *wkdibe.SecretKey
 }
 
 //	PrivateKey is a subtree in BEtree(note that this subtree might not be a Complete Binary Tree)
@@ -69,7 +69,7 @@ func (p *PrivateKey) GetREnd() int {
 type RevocationList []int
 
 type Ciphertext struct {
-	ciphertext *oaque.Ciphertext
+	ciphertext *wkdibe.Ciphertext
 	lEnd, rEnd *int
 }
 
@@ -86,14 +86,14 @@ type CiphertextList []*Ciphertext
 type Cipher struct {
 	cipherlist CiphertextList
 	// TODO: attrs in cipher or in private key
-	attrs oaque.AttributeList
+	attrs wkdibe.AttributeList
 }
 
 func (c *Cipher) GetCipherlist() *CiphertextList {
 	return &c.cipherlist
 }
 
-func (c *Cipher) SetAttrs(attrs *oaque.AttributeList) {
+func (c *Cipher) SetAttrs(attrs *wkdibe.AttributeList) {
 	c.attrs = *attrs
 }
 
@@ -104,7 +104,6 @@ func (c *Cipher) SetAttrs(attrs *oaque.AttributeList) {
 func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 	params := &Params{}
 	masterKey := &MasterKey{}
-	var err error
 
 	params.userSize, params.userHeight = new(int), new(int)
 	*params.userSize = n
@@ -113,10 +112,7 @@ func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 	//	masterKey.userNumber = new(int)
 	//	*masterKey.userNumber = n
 
-	params.params, masterKey.masterKey, err = oaque.Setup(random, *params.userHeight+l, false)
-	if err != nil {
-		return nil, nil, err
-	}
+	params.params, masterKey.masterKey = wkdibe.Setup(*params.userHeight+l, false)
 
 	//	params.revocationList = make([]int, 0, n)
 
@@ -125,28 +121,29 @@ func Setup(random io.Reader, l int, n int) (*Params, *MasterKey, error) {
 
 // Return a new AttributeList containing original attrs and position of node vi in
 // the tree.
-func newAttributeList(params *Params, nodeID []int, attrs oaque.AttributeList, depth int, delegable bool) oaque.AttributeList {
+func newAttributeList(params *Params, nodeID []int, attrs wkdibe.AttributeList, depth int, delegable bool) wkdibe.AttributeList {
 
 	// NOTE: Assume attributeIndex is int
-	newAttr := make(oaque.AttributeList)
+	newAttr := make(wkdibe.AttributeList)
 	for index := range attrs {
-		newAttr[oaque.AttributeIndex(*params.userHeight+int(index))] = attrs[index]
+		newAttr[wkdibe.AttributeIndex(*params.userHeight+int(index))] = attrs[index]
 	}
 
-	//TODO: Add hash function here or inside oaque
 	for i := 0; i < depth; i++ {
-		newAttr[oaque.AttributeIndex(i)] = big.NewInt(int64(nodeID[i]))
+		buffer := make([]byte, 8)
+		binary.LittleEndian.PutUint64(buffer, uint64(nodeID[i]))
+		newAttr[wkdibe.AttributeIndex(i)] = cryptutils.HashToZp(buffer)
 	}
 
 	if !delegable {
 		for i := depth; i < *params.userHeight; i++ {
-			newAttr[oaque.AttributeIndex(i)] = nil
+			newAttr[wkdibe.AttributeIndex(i)] = nil
 		}
 	}
 	return newAttr
 }
 
-func treeKeyGen(params *Params, master *MasterKey, left int, right int, lEnd int, rEnd int, attrs oaque.AttributeList, nodeID []int, depth int) (*privateKeyNode, error) {
+func treeKeyGen(params *Params, master *MasterKey, left int, right int, lEnd int, rEnd int, attrs wkdibe.AttributeList, nodeID []int, depth int) (*privateKeyNode, error) {
 	if left > right {
 		return nil, nil
 	}
@@ -161,11 +158,7 @@ func treeKeyGen(params *Params, master *MasterKey, left int, right int, lEnd int
 	//	This private key should be delegable
 	if lEnd <= left && right <= rEnd {
 		newAttrs := newAttributeList(params, nodeID, attrs, depth, true)
-		node.privateKey, err = oaque.KeyGen(nil, params.params, master.masterKey, newAttrs)
-
-		if err != nil {
-			return nil, err
-		}
+		node.privateKey = wkdibe.KeyGen(params.params, master.masterKey, newAttrs)
 
 		node.delegable = new(bool)
 		node.left, node.right, *node.delegable = nil, nil, true
@@ -174,10 +167,7 @@ func treeKeyGen(params *Params, master *MasterKey, left int, right int, lEnd int
 
 	// This private key should not be delegable
 	newAttrs := newAttributeList(params, nodeID, attrs, depth, false)
-	node.privateKey, err = oaque.KeyGen(nil, params.params, master.masterKey, newAttrs)
-	if err != nil {
-		return nil, err
-	}
+	node.privateKey = wkdibe.KeyGen(params.params, master.masterKey, newAttrs)
 
 	mid := (left + right) / 2 // Note: it should be div
 
@@ -204,7 +194,7 @@ func treeKeyGen(params *Params, master *MasterKey, left int, right int, lEnd int
 // not in the map are not set. userNum is the number of current users in the system,
 // and newUser is number of privateKey which namespace wants to generate.
 
-func KeyGen(params *Params, master *MasterKey, attrs oaque.AttributeList, userNum int, newUser int) (*PrivateKey, error) {
+func KeyGen(params *Params, master *MasterKey, attrs wkdibe.AttributeList, userNum int, newUser int) (*PrivateKey, error) {
 	if newUser <= 0 || userNum < 0 || userNum+newUser > *params.userSize {
 		panic("Parameters for KeyGen are out of bound")
 	}
@@ -223,7 +213,7 @@ func KeyGen(params *Params, master *MasterKey, attrs oaque.AttributeList, userNu
 	return key, nil
 }
 
-func treeQualifyKey(params *Params, qNode *privateKeyNode, left int, right int, lEnd int, rEnd int, attrs oaque.AttributeList, nodeID []int, depth int) (*privateKeyNode, error) {
+func treeQualifyKey(params *Params, qNode *privateKeyNode, left int, right int, lEnd int, rEnd int, attrs wkdibe.AttributeList, nodeID []int, depth int) (*privateKeyNode, error) {
 	if left > right {
 		return nil, nil
 	}
@@ -241,10 +231,7 @@ func treeQualifyKey(params *Params, qNode *privateKeyNode, left int, right int, 
 
 	if lEnd <= left && right <= rEnd {
 		newAttrs := newAttributeList(params, nodeID, attrs, depth, true)
-		node.privateKey, err = oaque.QualifyKey(nil, params.params, qNode.privateKey, newAttrs)
-		if err != nil {
-			return nil, err
-		}
+		node.privateKey = wkdibe.QualifyKey(params.params, qNode.privateKey, newAttrs)
 
 		node.delegable = new(bool)
 		node.left, node.right, *node.delegable = nil, nil, true
@@ -252,10 +239,7 @@ func treeQualifyKey(params *Params, qNode *privateKeyNode, left int, right int, 
 	}
 
 	newAttrs := newAttributeList(params, nodeID, attrs, depth, false)
-	node.privateKey, err = oaque.QualifyKey(nil, params.params, qNode.privateKey, newAttrs)
-	if err != nil {
-		return nil, err
-	}
+	node.privateKey = wkdibe.QualifyKey(params.params, qNode.privateKey, newAttrs)
 
 	mid := (left + right) / 2 // Note: it should be div
 
@@ -283,7 +267,7 @@ func treeQualifyKey(params *Params, qNode *privateKeyNode, left int, right int, 
 // so the attrs map must contain mappings for attributes that are already set.
 // The attrs argument is a mapping from attribute to its value; attributes
 // not in the map are not set. lEnd and rEnd specify the leafID range to be delegated
-func QualifyKey(params *Params, qualify *PrivateKey, attrs oaque.AttributeList, lEnd int, rEnd int) (*PrivateKey, error) {
+func QualifyKey(params *Params, qualify *PrivateKey, attrs wkdibe.AttributeList, lEnd int, rEnd int) (*PrivateKey, error) {
 	if !(*qualify.lEnd <= lEnd && rEnd <= *qualify.rEnd) {
 		panic("Cannot generate key out bound of given key")
 	}
@@ -318,7 +302,7 @@ func max(x int, y int) int {
 	return y
 }
 
-func treeEncrypt(params *Params, left int, right int, attrs oaque.AttributeList, lastAttrs oaque.AttributeList, preparedAttrs *oaque.PreparedAttributeList, revoc RevocationList, message *bn256.GT, nodeID []int, depth int) (CiphertextList, error) {
+func treeEncrypt(params *Params, left int, right int, attrs wkdibe.AttributeList, lastAttrs wkdibe.AttributeList, preparedAttrs *wkdibe.PreparedAttributeList, revoc RevocationList, message *cryptutils.Encryptable, nodeID []int, depth int) (CiphertextList, error) {
 	if left > right {
 		return nil, nil
 	}
@@ -338,21 +322,19 @@ func treeEncrypt(params *Params, left int, right int, attrs oaque.AttributeList,
 		}
 	}
 
-	var newPreparedAttrs *oaque.PreparedAttributeList
-	var newAttrs oaque.AttributeList
+	var newPreparedAttrs = new(wkdibe.PreparedAttributeList)
+	*newPreparedAttrs = *preparedAttrs
+
+	var newAttrs wkdibe.AttributeList
 	newAttrs = newAttributeList(params, nodeID, attrs, depth, true)
-	newPreparedAttrs = oaque.AdjustPreparedAttributeSet(params.params, lastAttrs, newAttrs, preparedAttrs)
+	wkdibe.AdjustPreparedAttributeList(newPreparedAttrs, params.params, lastAttrs, newAttrs)
 
 	if !flag {
 		var cipher CiphertextList
 		cipher = make(CiphertextList, 1, 1)
 		cipher[0] = new(Ciphertext)
-		var err error
 
-		cipher[0].ciphertext, err = oaque.EncryptPrecomputed(nil, params.params, newPreparedAttrs, message)
-		if err != nil {
-			return nil, err
-		}
+		cipher[0].ciphertext = wkdibe.EncryptPrepared(message, params.params, newPreparedAttrs)
 		cipher[0].lEnd, cipher[0].rEnd = new(int), new(int)
 		*cipher[0].lEnd, *cipher[0].rEnd = left, right
 
@@ -392,18 +374,18 @@ func treeEncrypt(params *Params, left int, right int, attrs oaque.AttributeList,
 // Encrypt first find a node set which cover all the unrevoked leaves, and then
 // encrypts message under those nodes' keys. The set covering algorithm used here
 // is Complete Tree(CS)
-func Encrypt(params *Params, attrs oaque.AttributeList, revoc RevocationList, message *bn256.GT) (*Cipher, error) {
+func Encrypt(params *Params, attrs wkdibe.AttributeList, revoc RevocationList, message *cryptutils.Encryptable) (*Cipher, error) {
 	cipher := &Cipher{}
 	var err error
 	nodeID := make([]int, *params.userHeight, *params.userHeight)
 
-	preparedAttrs := oaque.PrepareAttributeSet(params.params, attrs)
+	preparedAttrs := wkdibe.PrepareAttributeList(params.params, attrs)
 	cipher.cipherlist, err = treeEncrypt(params, 1, *params.userSize, attrs, attrs, preparedAttrs, revoc, message, nodeID, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	cipher.attrs = make(oaque.AttributeList)
+	cipher.attrs = make(wkdibe.AttributeList)
 	for index := range attrs {
 		cipher.attrs[index] = attrs[index]
 	}
@@ -434,7 +416,7 @@ func newNodeID(params *Params, left int, right int, lEnd int, rEnd int, nodeID [
 	panic("Node depth is out of range")
 }
 
-func treeDecrypt(params *Params, pNode *privateKeyNode, left int, right int, cipher *Cipher, nodeID []int, depth int) *bn256.GT {
+func treeDecrypt(params *Params, pNode *privateKeyNode, left int, right int, cipher *Cipher, nodeID []int, depth int) *cryptutils.Encryptable {
 	if left > right {
 		return nil
 	}
@@ -454,9 +436,9 @@ func treeDecrypt(params *Params, pNode *privateKeyNode, left int, right int, cip
 
 				newAttrs := newAttributeList(params, nodeID, cipher.attrs, newDepth, true)
 
-				tmpPrivateKey := oaque.NonDelegableKey(params.params, pNode.privateKey, newAttrs)
+				tmpPrivateKey := wkdibe.NonDelegableQualifyKey(params.params, pNode.privateKey, newAttrs)
 
-				plaintext := oaque.Decrypt(tmpPrivateKey, cipher.cipherlist[i].ciphertext)
+				plaintext := wkdibe.Decrypt(cipher.cipherlist[i].ciphertext, tmpPrivateKey)
 				return plaintext
 			}
 		}
@@ -467,14 +449,14 @@ func treeDecrypt(params *Params, pNode *privateKeyNode, left int, right int, cip
 		if left == *cipher.cipherlist[i].lEnd && right == *cipher.cipherlist[i].rEnd {
 			newAttrs := newAttributeList(params, nodeID, cipher.attrs, depth, true)
 
-			tmpPrivateKey := oaque.NonDelegableKey(params.params, pNode.privateKey, newAttrs)
+			tmpPrivateKey := wkdibe.NonDelegableQualifyKey(params.params, pNode.privateKey, newAttrs)
 
-			plaintext := oaque.Decrypt(tmpPrivateKey, cipher.cipherlist[i].ciphertext)
+			plaintext := wkdibe.Decrypt(cipher.cipherlist[i].ciphertext, tmpPrivateKey)
 			return plaintext
 		}
 	}
 
-	var plaintext *bn256.GT
+	var plaintext *cryptutils.Encryptable
 	mid := (left + right) / 2
 
 	nodeID[depth] = 0
@@ -494,7 +476,7 @@ func treeDecrypt(params *Params, pNode *privateKeyNode, left int, right int, cip
 
 // Decrypt recovers the original message from the provided ciphertext, using
 // the provided private key.
-func Decrypt(params *Params, key *PrivateKey, cipher *Cipher) *bn256.GT {
+func Decrypt(params *Params, key *PrivateKey, cipher *Cipher) *cryptutils.Encryptable {
 	nodeID := make([]int, *params.userHeight, *params.userHeight)
 	plaintext := treeDecrypt(params, key.root, 1, *params.userSize, cipher, nodeID, 0)
 	return plaintext

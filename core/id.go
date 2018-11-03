@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ucbrise/starwave/crypto/cryptutils"
-	"github.com/ucbrise/starwave/crypto/oaque"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
+	"github.com/samkumar/embedded-pairing/lang/go/cryptutils"
 )
 
 /* ID Component Interface */
@@ -295,21 +295,21 @@ func (id ID) HashToZp() []*big.Int {
 // "prefix" bytes are appended to the representation of each component before
 // hashing, to allow, e.g., some attribute sets to be used for encryption and
 // others for signing.
-func AttributeSetFromPaths(uriPath URIPath, timePath TimePath, prefix []byte) map[oaque.AttributeIndex]*big.Int {
-	attrs := make(map[oaque.AttributeIndex]*big.Int)
+func AttributeSetFromPaths(uriPath URIPath, timePath TimePath, prefix []byte) map[wkdibe.AttributeIndex]*big.Int {
+	attrs := make(map[wkdibe.AttributeIndex]*big.Int)
 	for i, uriComponent := range uriPath {
 		comp := uriComponent.Representation()
 		buf := make([]byte, len(prefix)+len(comp))
 		copy(buf, prefix)
 		copy(buf[len(prefix):], comp)
-		attrs[oaque.AttributeIndex(i)] = cryptutils.HashToZp(buf)
+		attrs[wkdibe.AttributeIndex(i)] = cryptutils.HashToZp(buf)
 	}
 	for j, timeComponent := range timePath {
 		comp := timeComponent.Representation()
 		buf := make([]byte, len(prefix)+len(comp))
 		copy(buf, prefix)
 		copy(buf[len(prefix):], comp)
-		attrs[oaque.AttributeIndex(j+MaxURILength)] = cryptutils.HashToZp(buf)
+		attrs[wkdibe.AttributeIndex(j+MaxURILength)] = cryptutils.HashToZp(buf)
 	}
 	return attrs
 }
