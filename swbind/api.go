@@ -24,6 +24,9 @@ import (
 const (
 	SignMessages = true
 	SimpleRange  = false
+
+	MarshalCompressed = true
+	MarshalChecked    = true
 )
 
 type pubentry struct {
@@ -83,13 +86,13 @@ func (swc *SWClient) GetNamespaceDecryptionKey() *starwave.DecryptionKey {
 
 func HierarchyDescriptorFromEntity(entity *objects.Entity) *starwave.HierarchyDescriptor {
 	hd := new(starwave.HierarchyDescriptor)
-	hd.Unmarshal(GetCommentInEntity(entity.GetContent()))
+	hd.Unmarshal(GetCommentInEntity(entity.GetContent()), MarshalCompressed, MarshalChecked)
 	return hd
 }
 
 func EntityDescriptorFromEntity(entity *objects.Entity) *starwave.EntityDescriptor {
 	ed := new(starwave.EntityDescriptor)
-	ed.Unmarshal(GetContactInEntity(entity.GetContent()))
+	ed.Unmarshal(GetContactInEntity(entity.GetContent()), MarshalCompressed, MarshalChecked)
 	return ed
 }
 
@@ -180,7 +183,7 @@ func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain, perm *starwave.Perm
 
 		bundles[i] = new(starwave.DelegationBundle)
 		bundles[i].Delegations = []*starwave.FullDelegation{new(starwave.FullDelegation)}
-		success := bundles[i].Delegations[0].Unmarshal(GetCommentInEntity(ent.GetContent()))
+		success := bundles[i].Delegations[0].Unmarshal(GetCommentInEntity(ent.GetContent()), MarshalCompressed, MarshalChecked)
 		if !success {
 			return nil, fmt.Errorf("Invalid DelegationBundle at index %d of DoT Chain", i)
 		}
@@ -203,11 +206,11 @@ func resolveChain(swc *SWClient, chain *bw2bind.SimpleChain, perm *starwave.Perm
 		}
 
 		hd := new(starwave.HierarchyDescriptor)
-		hd.Unmarshal(GetCommentInEntity(nsauth.GetContent()))
+		hd.Unmarshal(GetCommentInEntity(nsauth.GetContent()), MarshalCompressed, MarshalChecked)
 		to := new(starwave.EntityDescriptor)
-		to.Unmarshal(GetContactInEntity(giver.GetContent()))
+		to.Unmarshal(GetContactInEntity(giver.GetContent()), MarshalCompressed, MarshalChecked)
 		from := new(starwave.EntityDescriptor)
-		from.Unmarshal(GetContactInEntity(receiver.GetContent()))
+		from.Unmarshal(GetContactInEntity(receiver.GetContent()), MarshalCompressed, MarshalChecked)
 
 		bundles[i].Decompress(from, to, hd)
 	}
@@ -368,7 +371,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	}
 
 	hd := new(starwave.HierarchyDescriptor)
-	success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()))
+	success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()), MarshalCompressed, MarshalChecked)
 	if !success {
 		return "", nil, errors.New("Invalid hierarchy descriptor in namespace authority")
 	}
@@ -379,7 +382,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 		return "", nil, err
 	}
 	ed := new(starwave.EntityDescriptor)
-	success = ed.Unmarshal(GetContactInEntity(to.GetContent()))
+	success = ed.Unmarshal(GetContactInEntity(to.GetContent()), MarshalCompressed, MarshalChecked)
 	if !success {
 		return "", nil, errors.New("Invalid entity descriptor in destination entity")
 	}
@@ -399,7 +402,7 @@ func (swc *SWClient) CreateDOT(p *bw2bind.CreateDOTParams) (string, []byte, erro
 	binary.LittleEndian.PutUint64(dotdata[16:24], uint64(expiry.UnixNano()))
 	entities := make([][]byte, len(db.Delegations))
 	for i, deleg := range db.Delegations {
-		comment := deleg.Marshal()
+		comment := deleg.Marshal(MarshalCompressed)
 		entity := objects.CreateNewEntity("", "", nil)
 		vk := entity.GetVK()
 		dotdata = append(dotdata, vk...)
@@ -443,7 +446,7 @@ func (swc *SWClient) encryptPO(random io.Reader, namespace string, hd *starwave.
 	binary.LittleEndian.PutUint32(buf[:4], uint32(po.GetPONum()))
 	copy(buf[4:], contents)
 
-	cachekey := string(perm.Marshal())
+	cachekey := string(perm.Marshal(MarshalCompressed))
 	var entry *pubentry
 	var hit bool
 	var err error
@@ -481,7 +484,7 @@ func (swc *SWClient) encryptPO(random io.Reader, namespace string, hd *starwave.
 
 	encrypted := new(bw2bind.PayloadObjectImpl)
 	encrypted.SetPONum(bw2bind.PONumPOEncryptedSTARWAVE)
-	encrypted.SetContents(message.Marshal())
+	encrypted.SetContents(message.Marshal(MarshalCompressed))
 	return encrypted, nil
 }
 
@@ -490,7 +493,7 @@ func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) 
 		return po
 	}
 	message := new(starwave.EncryptedMessage)
-	marshalledkey, success := message.UnmarshalPartial(po.GetContents())
+	marshalledkey, success := message.UnmarshalPartial(po.GetContents(), MarshalCompressed, MarshalChecked)
 	if !success {
 		return nil
 	}
@@ -504,7 +507,7 @@ func (swc *SWClient) decryptPO(d *starwave.Decryptor, po bw2bind.PayloadObject) 
 		disabled := swc.cachedisabled
 		swc.submutex.RUnlock()
 		esk := new(starwave.EncryptedSymmetricKey)
-		success = esk.Unmarshal(marshalledkey)
+		success = esk.Unmarshal(marshalledkey, MarshalCompressed, MarshalChecked)
 		if !success {
 			// Not holding any locks
 			return nil
@@ -549,7 +552,7 @@ func (swc *SWClient) Publish(p *bw2bind.PublishParams) error {
 		return err
 	}
 	hd := new(starwave.HierarchyDescriptor)
-	success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()))
+	success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()), MarshalCompressed, MarshalChecked)
 	if !success {
 		return errors.New("Invalid hierarchy descriptor in namespace authority")
 	}
@@ -607,7 +610,7 @@ func (swc *SWClient) subscribeDecryptor(input <-chan *bw2bind.SimpleMessage) cha
 			for i, po := range msg.POs {
 				if po.GetPONum() == bw2bind.PONumPOEncryptedSTARWAVE {
 					emsg := new(starwave.EncryptedMessage)
-					emsg.Unmarshal(po.GetContents())
+					emsg.Unmarshal(po.GetContents(), MarshalCompressed, MarshalChecked)
 					perm := emsg.Key.Permissions
 					if cachedperm == nil || !perm.Equals(cachedperm) {
 						// Need to get a decryptor
@@ -692,8 +695,8 @@ func (swc *SWClient) QueryOrExit(p *bw2bind.QueryParams) chan *bw2bind.SimpleMes
 // Creation of entities.
 
 func appendSecretsToEntity(entity []byte, es *starwave.EntitySecret, master *starwave.DecryptionKey) []byte {
-	esm := es.Marshal()
-	masterm := master.Marshal()
+	esm := es.Marshal(MarshalCompressed)
+	masterm := master.Marshal(MarshalCompressed)
 	lenbuf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(lenbuf, uint32(len(esm)))
 	entity = append(entity, lenbuf...)
@@ -732,12 +735,12 @@ func extractSecretsFromEntity(entity []byte, containsSK bool, unmarshalSecrets b
 	masterm := footer[esmlen:]
 
 	es := new(starwave.EntitySecret)
-	success := es.Unmarshal(esm)
+	success := es.Unmarshal(esm, MarshalCompressed, MarshalChecked)
 	if !success {
 		return entity, nil, nil
 	}
 	master := new(starwave.DecryptionKey)
-	success = master.Unmarshal(masterm)
+	success = master.Unmarshal(masterm, MarshalCompressed, MarshalChecked)
 	if !success {
 		return entity, es, nil
 	}
@@ -763,7 +766,7 @@ func (swc *SWClient) CreateEntity(p *bw2bind.CreateEntityParams) (string, []byte
 		return "", nil, err
 	}
 
-	binrep = AddContactAndCommentToEntityWithKey(binrep, ed.Marshal(), hd.Marshal())
+	binrep = AddContactAndCommentToEntityWithKey(binrep, ed.Marshal(MarshalCompressed), hd.Marshal(MarshalCompressed))
 
 	return vk, appendSecretsToEntity(binrep, es, master), nil
 }

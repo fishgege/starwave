@@ -12,10 +12,15 @@ import (
 
 	"github.com/immesys/bw2bind"
 	ipfs "github.com/ipfs/go-ipfs-api"
+	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
 	"github.com/ucbrise/starwave/core"
-	"github.com/ucbrise/starwave/crypto/oaque"
 	"github.com/ucbrise/starwave/starwave"
 	"github.com/ucbrise/starwave/swbind"
+)
+
+const (
+	MarshalCompressed = true
+	MarshalChecked    = true
 )
 
 func handle(err error) {
@@ -60,19 +65,19 @@ func validatewrite(s *ipfs.Shell, fullpath string) (string, string) {
 	return myself, components[3]
 }
 
-func encryptfile(path string, myparams *oaque.Params, newfile io.Reader) io.Reader {
+func encryptfile(path string, myparams *wkdibe.Params, newfile io.Reader) io.Reader {
 	perm, err := starwave.ParsePermission(path, time.Now())
 	handle(err)
-	encryptedkey, encfile, err := core.HybridStreamEncrypt(rand.Reader, myparams, oaque.PrepareAttributeSet(myparams, perm.AttributeSet(starwave.KeyTypeDecryption)), newfile)
+	encryptedkey, encfile, err := core.HybridStreamEncrypt(rand.Reader, myparams, wkdibe.PrepareAttributeList(myparams, perm.AttributeSet(starwave.KeyTypeDecryption)), newfile)
 	handle(err)
 
-	newfile = io.MultiReader(starwave.MarshalIntoStream(perm), bytes.NewReader(encryptedkey.Marshal()), encfile)
+	newfile = io.MultiReader(starwave.MarshalIntoStream(perm, MarshalCompressed), bytes.NewReader(encryptedkey.Marshal(MarshalCompressed)), encfile)
 	return newfile
 }
 
-func obtainkey(perm *starwave.Permission, swc *swbind.SWClient, namespace string, myvk string, myhd *starwave.HierarchyDescriptor, verbose bool) (*oaque.Params, *oaque.PrivateKey) {
-	var decryptionkey *oaque.PrivateKey
-	var params *oaque.Params
+func obtainkey(perm *starwave.Permission, swc *swbind.SWClient, namespace string, myvk string, myhd *starwave.HierarchyDescriptor, verbose bool) (*wkdibe.Params, *wkdibe.SecretKey) {
+	var decryptionkey *wkdibe.SecretKey
+	var params *wkdibe.Params
 	var err error
 	if namespace == myvk {
 		decryptionkey = swc.GetNamespaceDecryptionKey().Key
@@ -96,12 +101,12 @@ func obtainkey(perm *starwave.Permission, swc *swbind.SWClient, namespace string
 }
 
 // In case the application has the key cached
-func decryptfilewithkey(reader io.Reader, params *oaque.Params, decryptionkey *oaque.PrivateKey) io.Reader {
+func decryptfilewithkey(reader io.Reader, params *wkdibe.Params, decryptionkey *wkdibe.SecretKey) io.Reader {
 	perm := new(starwave.Permission)
-	err := starwave.UnmarshalFromStream(perm, reader)
+	err := starwave.UnmarshalFromStream(perm, reader, MarshalCompressed, MarshalChecked)
 	handle(err)
 
-	decryptionkey = oaque.NonDelegableKey(params, decryptionkey, perm.AttributeSet(starwave.KeyTypeDecryption))
+	decryptionkey = wkdibe.NonDelegableQualifyKey(params, decryptionkey, perm.AttributeSet(starwave.KeyTypeDecryption))
 
 	decryptedreader, err := core.HybridStreamDecryptConcatenated(reader, decryptionkey)
 	handle(err)
@@ -111,11 +116,11 @@ func decryptfilewithkey(reader io.Reader, params *oaque.Params, decryptionkey *o
 
 func decryptfile(reader io.Reader, swc *swbind.SWClient, namespace string, myvk string, myhd *starwave.HierarchyDescriptor, verbose bool) io.Reader {
 	perm := new(starwave.Permission)
-	err := starwave.UnmarshalFromStream(perm, reader)
+	err := starwave.UnmarshalFromStream(perm, reader, MarshalCompressed, MarshalChecked)
 	handle(err)
 
-	var decryptionkey *oaque.PrivateKey
-	var params *oaque.Params
+	var decryptionkey *wkdibe.SecretKey
+	var params *wkdibe.Params
 	if namespace == myvk {
 		decryptionkey = swc.GetNamespaceDecryptionKey().Key
 		params = myhd.Params
@@ -134,7 +139,7 @@ func decryptfile(reader io.Reader, swc *swbind.SWClient, namespace string, myvk 
 		}
 	}
 
-	decryptionkey = oaque.NonDelegableKey(params, decryptionkey, perm.AttributeSet(starwave.KeyTypeDecryption))
+	decryptionkey = wkdibe.NonDelegableQualifyKey(params, decryptionkey, perm.AttributeSet(starwave.KeyTypeDecryption))
 
 	decryptedreader, err := core.HybridStreamDecryptConcatenated(reader, decryptionkey)
 	handle(err)

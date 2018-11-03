@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const TestMarshalCompressed = true
+const TestMarshalCompressed = false
 
 func remarshalHelper(m Marshallable) {
 	b := m.Marshal(TestMarshalCompressed)

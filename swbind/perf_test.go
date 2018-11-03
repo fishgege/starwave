@@ -137,7 +137,7 @@ func HelperSubscribe(b *testing.B, msgsize int, encrypt bool, disablecache bool)
 		}
 
 		hd := new(starwave.HierarchyDescriptor)
-		success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()))
+		success := hd.Unmarshal(GetCommentInEntity(authority.GetContent()), MarshalCompressed, MarshalChecked)
 		if !success {
 			b.Fatal("Invalid hierarchy descriptor in namespace authority")
 		}

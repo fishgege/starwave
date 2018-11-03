@@ -15,6 +15,11 @@ import (
 	"github.com/ucbrise/starwave/starwave"
 )
 
+const (
+	MarshalCompressed = true
+	MarshalChecked    = true
+)
+
 func handle(err error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -67,13 +72,13 @@ func encryptfile(path string, myparams *roaque.Params, revocList *roaque.Revocat
 	//tmp := encryptedkey.Marshal()
 	//println(len(tmp))
 	//println(string(tmp[1011]))
-	newfile = io.MultiReader(starwave.MarshalIntoStream(perm), bytes.NewReader(encryptedkey.Marshal()), encfile)
+	newfile = io.MultiReader(starwave.MarshalIntoStream(perm, MarshalCompressed), bytes.NewReader(encryptedkey.Marshal(MarshalCompressed)), encfile)
 	return newfile
 }
 
 func decryptfile(reader io.Reader, myparams *roaque.Params, mydk *roaque.PrivateKey) io.Reader {
 	perm := new(starwave.Permission)
-	err := starwave.UnmarshalFromStream(perm, reader)
+	err := starwave.UnmarshalFromStream(perm, reader, MarshalCompressed, MarshalChecked)
 	handle(err)
 
 	attrs := perm.AttributeSet(starwave.KeyTypeDecryption)
