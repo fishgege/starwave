@@ -11,7 +11,6 @@ import (
 
 	"github.com/samkumar/embedded-pairing/lang/go/cryptutils"
 	"github.com/samkumar/embedded-pairing/lang/go/wkdibe"
-	"vuvuzela.io/crypto/bn256"
 )
 
 const testCompressed = false
@@ -331,7 +330,7 @@ func QualifyKeyBenchmarkHelper(b *testing.B, numAttributes int, numLeaves int) {
 
 		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes-1; i++ {
-			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, cryptutils.GroupOrder)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -430,7 +429,7 @@ func EncryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocat
 
 		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, cryptutils.GroupOrder)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -552,7 +551,7 @@ func DecryptBenchmarkHelperForLeaves(b *testing.B, numAttributes int, numRevocat
 
 		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, cryptutils.GroupOrder)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -638,7 +637,7 @@ func BenchmarkDecryptForLeaves_a15_r0_n50(b *testing.B) {
 	DecryptBenchmarkHelperForLeaves(b, 15, 0, 50)
 }
 
-func BenchmarkDecrypForLeavest_a20_r0_n50(b *testing.B) {
+func BenchmarkDecryptForLeaves_a20_r0_n50(b *testing.B) {
 	DecryptBenchmarkHelperForLeaves(b, 20, 0, 50)
 }
 
@@ -702,7 +701,7 @@ func EncryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 
 		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, cryptutils.GroupOrder)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -831,7 +830,7 @@ func DecryptBenchmarkHelperForUsers(b *testing.B, numAttributes int, numRevocati
 
 		attrs := make(wkdibe.AttributeList)
 		for i := 0; i != numAttributes; i++ {
-			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, bn256.Order)
+			attrs[wkdibe.AttributeIndex(i)], err = rand.Int(rand.Reader, cryptutils.GroupOrder)
 			if err != nil {
 				b.Fatal(err)
 			}
